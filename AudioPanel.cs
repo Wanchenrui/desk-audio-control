@@ -60,7 +60,7 @@ internal sealed partial class AudioPanel : Form
         VisibleChanged += delegate { timer.Interval = Visible ? 60 : 420; };
         FormClosing += (s, e) => { if (!closing && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Hide(); } };
         FormClosed += (s, e) => {
-            Theme.Changed -= OnThemeChanged; timer.Stop(); events.Dispose();
+            Theme.Changed -= OnThemeChanged; timer.Stop(); events.Dispose(); foreach (var peak in peaks) peak.Dispose();
             UnregisterHotKey(window, 1); UnregisterHotKey(window, 2);
             tray.Visible = false; tray.Dispose(); Application.ExitThread();
         };

@@ -331,6 +331,33 @@ public static class AudioCore
     {
         return WithService(id, (IMeter m) => { float peak; m.GetPeakValue(out peak); return peak; });
     }
+    static object ActivateOn(string id, Guid iid)
+    {
+        if (String.IsNullOrEmpty(id)) throw new ArgumentNullException("id");
+        var en = (IEnum)new MMEnumerator();
+        IDevice dev = null;
+        try
+        {
+            en.GetDevice(id, out dev);
+            object service;
+            dev.Activate(ref iid, 23, IntPtr.Zero, out service);
+            return service;
+        }
+        finally { Release(dev); Release(en); }
+    }
+    // Polls one endpoint's peak through a meter that stays activated, instead of rebuilding the COM chain on every read.
+    // Use one instance per polling thread.
+    public sealed class PeakMeter : IDisposable
+    {
+        readonly EndpointCache<IMeter> cache = new EndpointCache<IMeter>(
+            endpoint => (IMeter)ActivateOn(endpoint, typeof(IMeter).GUID), meter => Release(meter));
+        public float Read(string id)
+        {
+            return cache.Use(id, meter => { float peak; meter.GetPeakValue(out peak); return peak; });
+        }
+        public void Reset() { cache.Reset(); }
+        public void Dispose() { cache.Dispose(); }
+    }
     public static int Volume(string id)
     {
         return WithService(id, (IVolume v) => { float level; v.GetMasterVolumeLevelScalar(out level); return (int)Math.Round(level * 100); });

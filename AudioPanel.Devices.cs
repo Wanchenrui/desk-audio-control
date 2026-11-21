@@ -18,6 +18,7 @@ internal sealed partial class AudioPanel
     readonly PillButton[] picker = new PillButton[2], route = new PillButton[2], mute = new PillButton[2];
     readonly FlatSlider[] volume = new FlatSlider[2];
     readonly LevelMeter[] meter = new LevelMeter[2];
+    readonly AudioCore.PeakMeter[] peaks = { new AudioCore.PeakMeter(), new AudioCore.PeakMeter() };
     readonly AudioItem[] chosen = new AudioItem[2];
     readonly List<AudioItem>[] choices = new List<AudioItem>[] { new List<AudioItem>(), new List<AudioItem>() };
 

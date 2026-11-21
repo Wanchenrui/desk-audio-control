@@ -3,7 +3,7 @@
 ## 构建与测试
 
 - 构建：在工程根目录运行 `.\Build.ps1`，用 Windows 自带的 .NET Framework 4.x 编译器生成 `DeskAudio.exe`。该编译器只支持 C# 5，新代码不要用 `?.`、字符串插值和表达式体成员。
-- 测试：运行 `.\tests\Run.ps1`。它只编译 `AudioCore`、`AudioDiscovery`、`SmartPolicy` 和 `UpdateCheck`，所以这几个文件不能依赖界面代码。
+- 测试：运行 `.\tests\Run.ps1`。它只编译 `EndpointCache`、`AudioCore`、`AudioDiscovery`、`SmartPolicy` 和 `UpdateCheck`，所以这几个文件不能依赖界面代码。
 - 新增源文件要同时加进 `Build.ps1`。
 
 ## 提交约定
@@ -30,6 +30,7 @@
 - 拖动音量、静音、设为默认、左右平衡、声音增强。
 - 托盘右键菜单、左右平衡对话框、更新凭据对话框。
 - 键盘导航和屏幕阅读器。
+- 缓存后的电平读取：只在系统静音时跑过真实设备，读数为 0，与原方式一致，300 次读取从 46 毫秒降到 9 毫秒。有信号时的读数没有核对。
 
 ## 下一步
 

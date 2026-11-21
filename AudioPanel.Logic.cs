@@ -148,7 +148,7 @@ internal sealed partial class AudioPanel
         for (int f = 0; f < 2; f++)
         {
             var p = chosen[f]; float v = 0f;
-            try { if (p != null) v = AudioCore.Peak(p.Id); }
+            try { if (p != null) v = peaks[f].Read(p.Id); else peaks[f].Reset(); }
             catch (COMException) { }
             catch (InvalidCastException) { }
             meter[f].Feed(v <= 0.002f ? 0f : (float)((20.0 * Math.Log10(v) + 54.0) / 54.0));
