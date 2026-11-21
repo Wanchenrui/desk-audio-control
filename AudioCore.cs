@@ -324,6 +324,13 @@ public static class AudioCore
             finally { Release(sessions); }
         });
     }
+    // IAudioMeterInformation: instantaneous peak of the endpoint signal, 0..1.
+    [ComImport, Guid("C02216F6-8C67-4B5B-9D00-D008E73E0064"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IMeter { void GetPeakValue(out float peak); }
+    public static float Peak(string id)
+    {
+        return WithService(id, (IMeter m) => { float peak; m.GetPeakValue(out peak); return peak; });
+    }
     public static int Volume(string id)
     {
         return WithService(id, (IVolume v) => { float level; v.GetMasterVolumeLevelScalar(out level); return (int)Math.Round(level * 100); });
