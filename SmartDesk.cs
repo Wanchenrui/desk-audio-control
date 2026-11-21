@@ -89,6 +89,8 @@ internal sealed class AudioPanel : Form
         var main=new TabPage("设备") { BackColor=Color.White }; var prefs=new TabPage("切换与设置") { BackColor=Color.White };
         tabs.TabPages.Add(main); tabs.TabPages.Add(prefs); Controls.Add(tabs);
         BuildMain(main); BuildSettings(prefs);
+        var updates=new UpdatePage(this,tag=>tray.ShowBalloonTip(5000,"桌面音频有新版本",tag+" 已发布，在面板的“更新”页下载。",ToolTipIcon.Info));
+        tabs.TabPages.Add(updates);
         var menu=new ContextMenuStrip();
         menu.Opening+=(s,e)=> {
             menu.Items.Clear(); RefreshDevices(false);
@@ -104,6 +106,7 @@ internal sealed class AudioPanel : Form
         tray.ContextMenuStrip=menu; tray.Icon=Icon; tray.Text="桌面音频"; tray.Visible=true;
         tray.MouseClick+=(s,e)=>{if(e.Button==MouseButtons.Left) Open();};
         IntPtr window=Handle;
+        updates.Start();
         hotOut=RegisterHotKey(window,1,0x4003,(uint)Keys.F8); hotMic=RegisterHotKey(window,2,0x4003,(uint)Keys.F7);
         shortcuts.Text="切换输出    Ctrl + Alt + F8"+(hotOut?"":"（被占用）")+"       默认话筒静音    Ctrl + Alt + F7"+(hotMic?"":"（被占用）");
         RefreshDevices(false);
@@ -163,7 +166,8 @@ internal sealed class AudioPanel : Form
         LabelAt(p,"板载、显示器和软件线路可在“显示其他接口”中查看。选择“加入日常设备”即可将它纳入快捷切换。",18,314,619,52);
         ButtonAt(p,"应用音量和输出",18,386,152,()=>Process.Start("ms-settings:apps-volume"));
         ButtonAt(p,"Windows 声音设置",180,386,158,()=>Process.Start("ms-settings:sound"));
-        ButtonAt(p,"恢复原默认话筒并退出…",18,453,218,Restore);
+        if(!String.IsNullOrEmpty(LocalSettings.Get("BeforeInput")))
+            ButtonAt(p,"恢复原默认话筒并退出…",18,453,218,Restore);
     }
     void Restore()
     {

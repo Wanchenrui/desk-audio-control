@@ -19,7 +19,13 @@ try {
         & $tempExe
         if ($LASTEXITCODE -ne 0) { throw "$suite failed." }
     }
+    $updateCode = Join-Path $project 'UpdateCheck.cs'
+    $updateTests = Join-Path $PSScriptRoot 'UpdateCheckTest.cs'
+    & $compiler /nologo /target:exe /platform:x64 /codepage:65001 /r:System.Web.Extensions.dll /r:System.Security.dll "/out:$tempExe" $updateCode $updateTests
+    if ($LASTEXITCODE -ne 0) { throw 'Could not compile UpdateCheckTest.' }
+    & $tempExe
+    if ($LASTEXITCODE -ne 0) { throw 'UpdateCheckTest failed.' }
 } finally {
     if (Test-Path -LiteralPath $tempExe) { Remove-Item -LiteralPath $tempExe }
 }
-'Both DeskAudio test suites passed.'
+'All DeskAudio test suites passed.'

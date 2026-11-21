@@ -2,6 +2,14 @@
 
 Windows 托盘音频面板。接入或拔出 USB、蓝牙设备时，面板会刷新列表，并把同一外设的播放和录音端口归为一项。遇到同时提供输入和输出的耳机、话筒或声卡，可以指定实际用途，供下次接入时沿用。
 
+## 下载与更新
+
+1. 用有权访问这个私有仓库的账号登录 GitHub，在 [最新正式版](https://github.com/Wanchenrui/desk-audio-control/releases/latest) 的 **Assets** 下下载 **DeskAudio.exe**。
+2. 将 EXE 放在准备长期使用的文件夹里，双击即可运行。程序适用于 64 位 Windows 和 .NET Framework 4.8 或更高版本。换电脑时会重新识别该机的设备。
+3. 打开面板的 **更新** 页，可以立即检查或关闭每天一次的后台检查。检测到新版本后，在发布页下载新版；从托盘退出旧版，再替换同名 EXE。
+
+浏览器登录用于手动下载。要让程序检查这个私有仓库，在 **更新** 页勾选 **允许使用本机 GitHub 登录检查更新**，即可使用已登录的 Git for Windows 或 GitHub CLI。如果新电脑只有这个 EXE，在 **设置更新凭据** 保存一枚细粒度令牌即可。创建时将资源所有者设为 `Wanchenrui`，只选 `desk-audio-control` 仓库，仓库权限选择 **Contents → Read-only**。Windows 使用当前用户的账户加密保存该令牌，可从同一入口移除。[GitHub 令牌说明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+
 | 操作 | 入口 |
 | --- | --- |
 | 轮换当前可用的日常播放设备 | `Ctrl + Alt + F8` |
