@@ -65,6 +65,10 @@ internal static class TuningTest
         Check(Analyze(.03,.3,0,true).EchoRisk,"correlated render envelope");
         Check(!silent.EchoAssessed,"no output activity is inconclusive");
 
+        Check(Analyze(.002,0,0,false).NoSpeech,"missing voice prompts a retry");
+        Check(MicAdvisor.Adjustment(silent)==0,"never amplify a silent input");
+        Check(MicAdvisor.Target(Analyze(.002,1.6,0,false),60,new GainPoint[0])<60,"clipping without a driver curve reduces gain");
+
         var catalog=EqPreset.Load();
         var hd=EqPreset.Match(catalog,"耳机 (Sennheiser HD 600 Stereo)");
         Check(hd!=null && hd.Model=="Sennheiser HD 600","measured model match");

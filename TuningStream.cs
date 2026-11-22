@@ -78,7 +78,7 @@ internal sealed partial class TuningStream : IDisposable
             var watch=Stopwatch.StartNew();
             long nextCheck=500;
             stream.Start();
-            while (blocks<MicAnalysis.TotalBlocks) {
+            while (!analysis.Complete) {
                 cancel.ThrowIfCancellationRequested();
                 if (watch.ElapsedMilliseconds>9000) throw new TimeoutException("输入端口未及时提供完整采样");
                 if (watch.ElapsedMilliseconds>=nextCheck) { Check(guard,cancel); nextCheck=watch.ElapsedMilliseconds+500; }
@@ -89,7 +89,7 @@ internal sealed partial class TuningStream : IDisposable
                 if (frames==0) continue;
                 try {
                     if ((flags & 1)!=0 && blocks>0) throw new InvalidOperationException("采样中断，请重测");
-                    for (int offset=0;offset<(int)frames && blocks<MicAnalysis.TotalBlocks;) {
+                    for (int offset=0;offset<(int)frames && !analysis.Complete;) {
                         int n=Math.Min(block.Length-used,(int)frames-offset);
                         if ((flags & 2)!=0) Array.Clear(block,used,n);
                         else Marshal.Copy(IntPtr.Add(data,offset*2),block,used,n);
@@ -98,7 +98,8 @@ internal sealed partial class TuningStream : IDisposable
                             float reference=-1;
                             try { if (output!=null) reference=meter.Read(output); } catch (COMException) { }
                             analysis.Add(block,reference); used=0; blocks++;
-                            if (blocks%5==0) progress(blocks);
+                            analysis.ExtendQuietIfNeeded();
+                            if (blocks%5==0 || analysis.Complete) progress(Math.Min(100,blocks-analysis.QuietExtensions));
                         }
                     }
                 } finally { capture.ReleaseBuffer(frames); }

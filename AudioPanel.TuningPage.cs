@@ -87,7 +87,7 @@ internal sealed partial class AudioPanel
 
         var mic=tuneCards[1];
         doctorText=Cap(mic,"",10f,false,Tone.Ink); doctorText.Wrap=true; doctorText.TopAligned=true;
-        diagnoseButton=TuneButton(mic,"开始 5 秒检查",()=>StartTuningJob(true,false));
+        diagnoseButton=TuneButton(mic,"开始话筒检查",()=>StartTuningJob(true,false));
         repairButton=TuneButton(mic,"调整输入音量",ApplyMicFix);
         restoreInput=TuneButton(mic,"还原输入音量",()=>RestoreTuned(TuneIn));
 
@@ -204,8 +204,8 @@ internal sealed partial class AudioPanel
         diagnoseButton.Enabled=idle && input!=null;
         doctorText.Text=diagnosis==null ? "开始后前 1.5 秒请保持安静，再以平常音量说话 3.5 秒。\n\n检查电平、削波、底噪、50/60 Hz 嗡声和回声风险。采样仅在内存中分析。"
             : diagnosis.Describe();
-        repairButton.Enabled=idle && input!=null && diagnosis!=null && diagnosedPort==input.Port.Id && diagnosis.GainChange!=0;
-        repairButton.Text=repairButton.Enabled ? "输入音量 "+(diagnosis.GainChange>0 ? "+" : "")+diagnosis.GainChange+" 个百分点" : "调整输入音量";
+        repairButton.Enabled=idle && input!=null && diagnosis!=null && diagnosedPort==input.Port.Id && diagnosis.GainDb!=0;
+        repairButton.Text=repairButton.Enabled ? "输入音量 "+diagnosis.GainDb.ToString("+0.#;-0.#")+" dB" : "调整输入音量";
         restoreInput.Enabled=idle && input!=null && levels.Saved(input.Port.Id)!=null;
         listenA.Enabled=listenB.Enabled=idle && Preset!=null && output!=null;
         exportEq.Enabled=Preset!=null;
@@ -237,7 +237,7 @@ internal sealed partial class AudioPanel
         var p=TuneIn; RequireTuningIdle();
         if (p==null || diagnosis==null || p.Port.Id!=diagnosedPort || audio.Level(p.Port.Id)!=diagnosedLevel || audio.Muted(p.Port.Id))
             throw new InvalidOperationException("输入或音量已变化，请重新检查");
-        int target=Math.Max(0,Math.Min(100,diagnosedLevel+diagnosis.GainChange));
+        int target=MicAdvisor.Target(diagnosis,diagnosedLevel,DeviceGain(p.Port.Id));
         if (target==diagnosedLevel) throw new InvalidOperationException("已到音量边界，请调整话筒距离后重测");
         string owner=Guid.NewGuid().ToString("N");
         try { levels.Begin(p.Port.Id,owner,target); } catch { RollbackLevel(p.Port.Id,owner); throw; }

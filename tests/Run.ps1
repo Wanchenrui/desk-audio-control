@@ -3,6 +3,8 @@ $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $sources = @(
+    (Join-Path $project 'MicAdvisor.cs')
+    (Join-Path $project 'MicSpectrum.cs')
     (Join-Path $project 'LevelPlanner.cs')
     (Join-Path $project 'BluetoothLink.cs')
     (Join-Path $project 'DevicePresence.cs')
