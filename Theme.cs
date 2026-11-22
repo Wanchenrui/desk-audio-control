@@ -89,6 +89,22 @@ internal static class Theme
     }
     public static Color Meter(float v) { return v < 0.72f ? Good : (v < 0.9f ? Warn : Bad); }
 
+    [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern int SetWindowTheme(IntPtr window, string app, string list);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, int message, IntPtr w, IntPtr l);
+    // Asks Windows to draw a control's native parts (scroll bars, list headers) in the current light or dark look.
+    public static void Native(Control c, bool header = false)
+    {
+        if (c == null || !c.IsHandleCreated) return;
+        try {
+            SetWindowTheme(c.Handle, Dark ? "DarkMode_Explorer" : "Explorer", null);
+            if (header) {
+                IntPtr h = SendMessage(c.Handle, 0x101F, IntPtr.Zero, IntPtr.Zero); // LVM_GETHEADER
+                if (h != IntPtr.Zero) SetWindowTheme(h, Dark ? "DarkMode_ItemsView" : "Explorer", null);
+            }
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+    }
     public static void Quality(Graphics g) { g.SmoothingMode = SmoothingMode.AntiAlias; g.PixelOffsetMode = PixelOffsetMode.Half; }
     public static GraphicsPath Round(RectangleF r, float radius)
     {

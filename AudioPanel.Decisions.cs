@@ -96,6 +96,23 @@ internal sealed partial class AudioPanel
         {
             var list = new ListView { View = View.Details, FullRowSelect = true, Dock = DockStyle.Fill,
                 AccessibleName = "最近 30 天的活动时间线", ShowItemToolTips = true, HideSelection = false, BackColor = Theme.Surface, ForeColor = Theme.Ink };
+            list.HandleCreated += delegate { Theme.Native(list, true); };
+            // The system header keeps dark text in dark mode, so the header and the cells are drawn with the theme colors.
+            list.OwnerDraw = true;
+            list.DrawItem += delegate { };
+            list.DrawColumnHeader += (o, h) => {
+                using (var back = new SolidBrush(Theme.SurfaceHi)) h.Graphics.FillRectangle(back, h.Bounds);
+                using (var line = new Pen(Theme.Border)) h.Graphics.DrawLine(line, h.Bounds.Left, h.Bounds.Bottom - 1, h.Bounds.Right, h.Bounds.Bottom - 1);
+                TextRenderer.DrawText(h.Graphics, h.Header.Text, list.Font, new Rectangle(h.Bounds.X + P(6), h.Bounds.Y, Math.Max(0, h.Bounds.Width - P(8)), h.Bounds.Height), Theme.Ink,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            };
+            list.DrawSubItem += (o, c) => {
+                var box = c.Bounds;
+                if (c.ColumnIndex == 0) box.Width = list.Columns[0].Width;
+                using (var back = new SolidBrush(c.Item.Selected ? Theme.AccentSoft : Theme.Surface)) c.Graphics.FillRectangle(back, box);
+                TextRenderer.DrawText(c.Graphics, c.SubItem.Text, list.Font, new Rectangle(box.X + P(6), box.Y, Math.Max(0, box.Width - P(8)), box.Height), Theme.Ink,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            };
             list.Columns.Add("时间",P(122)); list.Columns.Add("场景",P(60)); list.Columns.Add("结果",P(125)); list.Columns.Add("候选设备",P(150));
             list.Columns.Add("原因",P(228)); list.Columns.Add("触发源",P(105)); list.Columns.Add("耗时",P(70));
             var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = P(50), Padding = new Padding(P(5)) };
