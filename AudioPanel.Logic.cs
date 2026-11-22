@@ -167,7 +167,7 @@ internal sealed partial class AudioPanel
         {
             var p = chosen[f]; bool ok = p != null;
             mute[f].Enabled = route[f].Enabled = volume[f].Enabled = picker[f].Enabled = ok;
-            picker[f].Text = ok ? p.Name : (f == 0 ? "没有可用的播放端口" : "没有可用的录音端口");
+            picker[f].Text = ok ? p.Name : (f == 0 ? "此设备没有播放功能" : "此设备没有录音功能");
             if (f == 0) balance.Enabled = fx.Enabled = ok;
             if (!ok)
             {

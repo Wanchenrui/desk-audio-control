@@ -48,8 +48,8 @@ internal sealed partial class AudioPanel
         switch (value)
         {
             case "tuned": return "声音调优";
-            case "hint": return "L0 提示";
-            case "offer": return "L1 执行建议";
+            case "hint": return "仅提醒";
+            case "offer": return "待确认的切换建议";
             case "scene": return "场景变化";
             case "connected": return "接入";
             case "removed": return "断开";

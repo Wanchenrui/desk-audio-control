@@ -211,7 +211,7 @@ internal sealed partial class AudioPanel
         exportEq.Enabled=Preset!=null;
         var shownPort=tuneTab==1 ? input : output;
         portButton.Enabled=idle && shownPort!=null;
-        portButton.Text=shownPort==null ? (tuneTab==1 ? "没有可用的录音端口" : "没有可用的播放端口") : shownPort+" · 更换…";
+        portButton.Text=shownPort==null ? (tuneTab==1 ? "没有检测到录音设备" : "没有检测到播放设备") : shownPort+" · 更换…";
         portButton.AccessibleName=(tuneTab==1 ? "录音端口" : "播放端口")+(shownPort==null ? "，无可用端口" : "，当前 "+shownPort+"，点击更换");
         pickModel.Enabled=idle;
         pickModel.Text=Preset==null ? "选择实物型号…" : Preset.Model+" · 更换…";

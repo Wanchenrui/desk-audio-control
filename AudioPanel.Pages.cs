@@ -15,7 +15,7 @@ internal sealed partial class AudioPanel
     Caption sceneStatus, sensitivityLabel;
     FlatSlider sensitivitySlider;
     PillButton autonomyButton, offerButton;
-    readonly string[] autonomyLabels = { "自适应（初始 L2）","L0 只提示","L1 一键执行","L2 切换并提示撤销","L3 静默切换" };
+    readonly string[] autonomyLabels = { "自动（推荐）","只提醒，不切换","点一下再切换","自动切换，可撤销","静默切换，不提示" };
 
     void RefreshSmartSettings()
     {
