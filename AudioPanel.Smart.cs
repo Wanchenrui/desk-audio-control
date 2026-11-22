@@ -210,13 +210,13 @@ internal sealed partial class AudioPanel
         // Re-enumerate for a delayed click, including endpoint roles and preference edits.
         long since = Stopwatch.GetTimestamp();
         var snap = TakeSnapshot();
+        AssessPresence(snap,false);
         var connected = new HashSet<string>(Connections(groups).Keys,StringComparer.OrdinalIgnoreCase);
         string mismatch = null;
         if (!connected.SetEquals(Connections(snap.Groups).Keys) || !SameRoles(offer.Before,snap.Outputs) ||
             !SameRoles(expectedInputs,snap.Inputs) || snap.Signals.ObservedScene(scenes.Current) != offer.Scene)
             mismatch = "设备或场景已经变化";
         var recent = offer.Evidence.Ranked.Where(p => p.Recent).Select(p => p.Key).ToArray();
-        AssessPresence(snap,false);
         var previous=groups;
         DecisionRecord row;
         groups=snap.Groups;
@@ -256,9 +256,9 @@ internal sealed partial class AudioPanel
                 skipped.Related = intent.Id; skipped.Scene = intent.Scene; skipped.Evidence = intent.Evidence;
                 journal.Add(skipped); return;
             }
-            if (guard.MaxLevel>1) volumeChange=PrepareLanding(intent.Target,roles[1],intent.Id);
+            volumeChange=PrepareLanding(intent.Target,roles[1],intent.Id,confirmed);
             var finalGuard=audio.RouteGuard(roles);
-            if (finalGuard.Blocked || (finalGuard.MaxLevel==1 && (!confirmed || volumeChange!=null))) {
+            if (finalGuard.Blocked || (finalGuard.MaxLevel==1 && !confirmed)) {
                 AbortLanding(volumeChange,intent.Before);
                 intent.Evidence.Guard=finalGuard.Reason; intent.Evidence.GuardCode=finalGuard.Code;
                 var skipped=DecisionRecord.Create(intent.Source,intent.Candidates,intent.Evidence.Explain(),"skipped");

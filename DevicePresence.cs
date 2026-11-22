@@ -9,8 +9,38 @@ internal sealed class PresenceResult
     internal PresenceResult(string state,string reason,int level) { State=state; Reason=reason; MaxLevel=level; }
 }
 
-internal static class DevicePresence
+internal sealed class DevicePresence
 {
+    Dictionary<string,long> arrivalsUntil=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string,long> missingSince=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
+
+    internal void Observe(IList<SmartGroup> groups,IList<SmartGroup> previousGroups,HashSet<string> audible,
+        bool hasSnapshot,bool remember,long now,string selectedPort,Dictionary<string,int> corrections)
+    {
+        var previous=new HashSet<string>(previousGroups.SelectMany(g=>g.Outputs.Concat(g.Inputs)).Select(p=>p.Id),StringComparer.OrdinalIgnoreCase);
+        var next=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
+        var current=new HashSet<string>(groups.SelectMany(g=>g.Outputs.Concat(g.Inputs)).Select(p=>p.Id),StringComparer.OrdinalIgnoreCase);
+        if (remember) {
+            foreach (var id in missingSince.Where(kv=>now-kv.Value>=2000).Select(kv=>kv.Key).ToArray()) missingSince.Remove(id);
+            foreach (var id in previous.Except(current,StringComparer.OrdinalIgnoreCase)) missingSince[id]=now;
+        }
+        foreach (var g in groups)
+        {
+            int count; corrections.TryGetValue(g.Key,out count);
+            foreach (var p in g.Outputs.Concat(g.Inputs)) {
+                long until;
+                arrivalsUntil.TryGetValue(p.Id,out until);
+                long lost;
+                bool bouncing=missingSince.TryGetValue(p.Id,out lost) && now-lost<2000;
+                if (hasSnapshot && !previous.Contains(p.Id) && !bouncing) until=now+30000;
+                if (until>now) next[p.Id]=until;
+                p.Presence=DevicePresence.Assess(p,audible.Contains(p.Id),until>now,
+                    String.Equals(selectedPort,p.Id,StringComparison.OrdinalIgnoreCase),count);
+            }
+        }
+        if (remember) arrivalsUntil=next;
+    }
+
     // A present USB receiver alone says nothing about the headset behind it.
     internal static PresenceResult Assess(AudioItem port,bool playing,bool arrived,bool selected,int corrections)
     {

@@ -48,33 +48,13 @@ internal sealed partial class AudioPanel
     void AssessPresence(Snapshot snap,bool remember)
     {
         long now=clock.ElapsedMilliseconds;
-        var previous=new HashSet<string>(groups.SelectMany(g=>g.Outputs.Concat(g.Inputs)).Select(p=>p.Id),StringComparer.OrdinalIgnoreCase);
-        var next=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
         if (corrections==null || now>=nextPresenceHistory) {
             try { corrections=DevicePresence.Corrections(journal.Records()); }
             catch (Exception error) { corrections=new Dictionary<string,int>(); Fail("设备纠正记录暂不可读 · "+error.Message); }
             nextPresenceHistory=now+60000;
         }
-        var current=new HashSet<string>(snap.Groups.SelectMany(g=>g.Outputs.Concat(g.Inputs)).Select(p=>p.Id),StringComparer.OrdinalIgnoreCase);
-        if (remember) {
-            foreach (var id in missingSince.Where(kv=>now-kv.Value>=2000).Select(kv=>kv.Key).ToArray()) missingSince.Remove(id);
-            foreach (var id in previous.Except(current,StringComparer.OrdinalIgnoreCase)) missingSince[id]=now;
-        }
-        foreach (var g in snap.Groups)
-        {
-            int count; corrections.TryGetValue(g.Key,out count);
-            foreach (var p in g.Outputs.Concat(g.Inputs)) {
-                long until;
-                arrivalsUntil.TryGetValue(p.Id,out until);
-                long lost;
-                bool bouncing=missingSince.TryGetValue(p.Id,out lost) && now-lost<2000;
-                if (hasSnapshot && !previous.Contains(p.Id) && !bouncing) until=now+30000;
-                if (until>now) next[p.Id]=until;
-                p.Presence=DevicePresence.Assess(p,snap.Signals.Audible.Contains(p.Id),until>now,
-                    selectedUntil>now && Same(selectedPort,p.Id),count);
-            }
-        }
-        if (remember) arrivalsUntil=next;
+        presence.Observe(snap.Groups,groups,snap.Signals.Audible,hasSnapshot,remember,now,
+            selectedUntil>now ? selectedPort : null,corrections);
     }
 
     void Apply(Snapshot snap, ScanReason reasons,long since)

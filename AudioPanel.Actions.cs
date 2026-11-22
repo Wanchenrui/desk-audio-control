@@ -23,7 +23,7 @@ internal sealed partial class AudioPanel
         if (p.Flow==0) {
             var before=audio.Outputs();
             string owner=Guid.NewGuid().ToString("N");
-            VolumeChange change=tuneEnabled && audio.TuningGuard()==null ? PrepareLanding(p.Id,before[1],owner) : null;
+            VolumeChange change=tuneEnabled && !audio.RouteGuard(before).Blocked ? PrepareLanding(p.Id,before[1],owner,true) : null;
             try {
                 if (before.Any(String.IsNullOrEmpty)) AudioCore.Route(p.Id,0);
                 else audio.RouteOutputs(Three(p.Id),before);

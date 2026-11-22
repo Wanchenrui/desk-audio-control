@@ -34,10 +34,9 @@ internal sealed partial class AudioPanel : Form
     long actionRevision, quietUntil;
     bool hotUndo, hasSnapshot, cycleOnReady;
     Dictionary<string,int> corrections;
-    Dictionary<string,long> arrivalsUntil=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
+    readonly DevicePresence presence=new DevicePresence();
     string selectedPort;
     long selectedUntil,nextPresenceHistory;
-    readonly Dictionary<string,long> missingSince=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
     readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
     readonly NotifyIcon tray = new NotifyIcon();
     readonly Stopwatch clock = Stopwatch.StartNew();

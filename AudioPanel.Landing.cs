@@ -9,7 +9,7 @@ internal sealed partial class AudioPanel
     VolumeChange ramp;
     LevelPlan rampPlan;
     int rampTick;
-    bool rampHeadphones;
+    bool rampHeadphones,rampConfirmed;
     bool tuneEnabled=LocalSettings.Get("EnableTuning")=="1";
     string observedPort,learnKey,learnPort;
     int observedLevel,learnLevel;
@@ -59,7 +59,7 @@ internal sealed partial class AudioPanel
         levels.Learn(key,level,curve.Length==3 && curve[1].Level==level ? curve[1].Db : Double.NaN);
     }
     // Return the durable volume intent to the caller before changing the default roles.
-    VolumeChange PrepareLanding(string target,string source,string owner)
+    VolumeChange PrepareLanding(string target,string source,string owner,bool confirmed=false)
     {
         StopLanding(); learnPort=null;
         if (!tuneEnabled || Same(source,target) || target==null || source==null) return null;
@@ -79,11 +79,16 @@ internal sealed partial class AudioPanel
         rampPlan=LevelPlanner.Plan(sourceLevel,original,DeviceGain(source),DeviceGain(target),
             old==null ? new ComfortSample[0] : levels.Samples(old.Key),history,phones,
             LevelPlanner.Night(now.ToLocalTime().Hour),now,ReadNumber("HeadphoneCeiling/"+g.Key,60,1,60));
-        rampHeadphones=phones;
+        rampHeadphones=phones; rampConfirmed=confirmed;
         if (original==rampPlan.Target && !phones) return null;
-        if (audio.Muted(target) || audio.TuningGuard()!=null) return null;
+        if (audio.Muted(target) || LandingBlocked()) return null;
         try { return levels.Begin(target,owner,rampPlan.Start,original); }
         catch { RollbackLevel(target,owner); throw; }
+    }
+    bool LandingBlocked()
+    {
+        if (!rampConfirmed) return audio.TuningGuard()!=null;
+        return audio.RouteGuard(audio.Outputs()).Blocked;
     }
     static bool IsHeadphoneName(string text)
     {
@@ -101,7 +106,7 @@ internal sealed partial class AudioPanel
         if (tx==null) return;
         try {
             if (!tuneEnabled || !Same(audio.Default(0,1),tx.Endpoint) || audio.Muted(tx.Endpoint) ||
-                audio.Level(tx.Endpoint)!=tx.Next || audio.TuningGuard()!=null)
+                audio.Level(tx.Endpoint)!=tx.Next || LandingBlocked())
             { StopLanding(); return; }
             rampTick++;
             if (rampHeadphones && audio.Peak(tx.Endpoint)>=.94f) {

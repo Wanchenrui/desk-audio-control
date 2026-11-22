@@ -10,6 +10,22 @@ internal static class PresenceTest
     }
     public static void Main()
     {
+        var model=new DevicePresence();
+        var empty=new List<SmartGroup>();
+        var g=new SmartGroup { Key="receiver" }; var receiver=new AudioItem { Id="rx",ParentPresent=true };
+        g.Outputs.Add(receiver);
+        var connected=new List<SmartGroup> { g };
+        var audible=new HashSet<string>(); var history=new Dictionary<string,int>();
+        model.Observe(connected,empty,audible,false,true,0,null,history);
+        if (receiver.Presence.MaxLevel!=1) throw new Exception("cold start");
+        model.Observe(empty,connected,audible,true,true,1000,null,history);
+        model.Observe(connected,empty,audible,true,true,1400,null,history);
+        if (receiver.Presence.MaxLevel!=1) throw new Exception("driver restart must not confirm");
+        model.Observe(empty,connected,audible,true,true,10000,null,history);
+        model.Observe(connected,empty,audible,true,true,20000,null,history);
+        if (receiver.Presence.MaxLevel!=3) throw new Exception("fresh physical insertion");
+        model.Observe(connected,connected,audible,true,true,55000,null,history);
+        if (receiver.Presence.MaxLevel!=1) throw new Exception("arrival evidence expires");
         var port=new AudioItem { Id="usb", ParentPresent=true };
         Expect(1,port,false,0);
         Expect(3,port,true,0);
