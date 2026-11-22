@@ -105,6 +105,9 @@ internal static class TuningTest
         var hd=EqPreset.Match(catalog,"耳机 (Sennheiser HD 600 Stereo)");
         Check(hd!=null && hd.Model=="Sennheiser HD 600","measured model match");
         Check(EqPreset.Match(catalog,"HD 6000 USB")==null,"model number boundary");
+        Check(EqMatcher.Rank(catalog,"USB One","Pro").All(c=>c.Preset.Model!="Beats Pro" && c.Preset.Model!="Verum One"),
+            "generic short names cannot identify these headphones");
+        Check(EqPreset.Match(catalog,"Verum One")!=null && EqPreset.Match(catalog,"Beats Pro")!=null,"full branded generic models still match");
         Check(EqPreset.Match(catalog,"USB DAC")==null,"unknown stays unmatched");
         Check(hd.Export().Contains("Preamp:") && hd.Export().Contains("Filter 1:"),"Equalizer APO export");
         Check(EqPreset.Match(catalog,"LE_Sennheiser HD 600 Stereo")==hd,"transport prefix");
@@ -133,6 +136,25 @@ internal static class TuningTest
             bridge.Change(endpoint,null,delegate {});
             Check(File.ReadAllBytes(main).SequenceEqual(original),"byte-identical APO restore");
             bridge.Change(endpoint,half,delegate {});
+            string ledger=Path.Combine(apoDir,"DeskAudio-state.json");
+            string second="{0.0.0.00000000}.{00000000-0000-4000-a000-000000000124}";
+            var prior=File.ReadAllBytes(main);
+            int guards=0;
+            Throws(()=>bridge.Change(second,flat,delegate { if (++guards==2) throw new InvalidOperationException("interrupted"); }),
+                "stop after prepared state and immutable fragment");
+            var pending=File.ReadAllBytes(ledger);
+            bool managed;
+            var reopened=new ApoBridge(apoDir);
+            Check(File.ReadAllBytes(main).SequenceEqual(prior) && reopened.Applied(second,out managed)==null && !managed,
+                "pre-commit interruption preserves old active entries");
+            reopened.Change(second,flat,delegate {});
+            File.WriteAllBytes(ledger,pending); // Process exited after replacing the main file, before promotion.
+            reopened=new ApoBridge(apoDir);
+            Check(reopened.Applied(second,out managed)!=null && managed && reopened.Applied(endpoint,out managed)!=null,
+                "post-commit interruption recovers both endpoints");
+            reopened.Change(second,null,delegate {});
+            Check(File.ReadAllBytes(main).SequenceEqual(prior) && Directory.GetFiles(apoDir,"DeskAudio-*.txt").Length==1,
+                "restore only the interrupted endpoint and release its fragment");
             File.AppendAllText(main,"# external");
             bool refused=false;
             try { bridge.Change(endpoint,null,delegate {}); } catch (IOException) { refused=true; }

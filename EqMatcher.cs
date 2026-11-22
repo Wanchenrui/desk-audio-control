@@ -17,6 +17,7 @@ internal static class EqMatcher
         .Where(s=>s.Length>0 && s[0]!='#').OrderByDescending(s=>s.Length).Select(Regex.Escape))+@")(?![a-z0-9])",
         RegexOptions.IgnoreCase|RegexOptions.CultureInvariant|RegexOptions.Compiled);
 
+    static readonly HashSet<string> generic=new HashSet<string>(new[]{"one","pro","air","plus","max","mini","lite","wireless","edition"});
     static string Words(string name)
     {
         return String.Join(" ",words.Matches((name??"").ToLowerInvariant()).Cast<Match>().Select(m=>m.Value));
@@ -27,9 +28,11 @@ internal static class EqMatcher
         var clean=raw.Select(s=>Words(decorations.Replace(s," "))).Where(s=>s.Length>0).ToArray();
         var found=new List<EqCandidate>();
         foreach (var p in catalog) {
-            string full=Words(p.Model), shortName=Words(p.Model.Substring(p.Model.IndexOf(' ')+1));
+            string full=Words(p.Model);
+            int separator=full.IndexOf(' ');
+            string shortName=separator<0 ? "" : full.Substring(separator+1);
             string key=full.Replace(" ",""), shortKey=shortName.Replace(" ","");
-            bool distinctive=shortKey.Length>=3 && shortKey.Any(Char.IsLetter);
+            bool distinctive=shortKey.Length>=3 && shortKey.Any(Char.IsLetter) && shortName.Split(' ').Any(word=>!generic.Contains(word));
             int score=raw.Contains(full) ? 100 : clean.Any(n=>n.Replace(" ","")==key) ? 98 :
                 distinctive && clean.Any(n=>n.Replace(" ","")==shortKey) ? 91 :
                 clean.Any(n=>(" "+n+" ").Contains(" "+full+" ")) ? 78 :

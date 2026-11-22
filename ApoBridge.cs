@@ -64,7 +64,8 @@ internal sealed class ApoBridge
     }
     static void Validate(Entry[] entries)
     {
-        if (entries==null || entries.Length>128 || entries.Any(e=>e==null ||
+        if (entries!=null && entries.Length>128) throw new InvalidDataException("DeskAudio 最多可管理 128 个 EQ 端口，请先还原一个端口");
+        if (entries==null || entries.Any(e=>e==null ||
             !System.Text.RegularExpressions.Regex.IsMatch(e.Hash??"",@"\A[0-9A-F]{64}\z") ||
             !System.Text.RegularExpressions.Regex.IsMatch(e.Guid??"",@"\A[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\z")))
             throw new InvalidDataException("DeskAudio 的 EQ 备份无效");
@@ -129,6 +130,9 @@ internal sealed class ApoBridge
             Validate(s.Pending);
             var desired=Config(s.Original,s.Pending);
             if (entries.Count==0 && previous.Length==0 && !File.Exists(statePath)) return true;
+            // A prior interrupted transaction can own unused fragments. Reconcile them
+            // before replacing the only ledger that records their names.
+            RemoveUnused(previous,s.Active.Concat(s.Pending));
             JsonFile.Save(statePath,s);
             if (next!=null) {
                 string path=Path.Combine(folder,Fragment(next));
@@ -138,16 +142,20 @@ internal sealed class ApoBridge
             }
             guard();
             WriteAtomic(main,desired,current);
+            RemoveUnused(previous,s.Pending);
             s.Active=s.Pending; s.Pending=null;
             JsonFile.Save(statePath,s);
-            foreach (var old in previous) {
-                if (s.Active.Any(e=>Fragment(e)==Fragment(old))) continue;
-                string path=Path.Combine(folder,Fragment(old));
-                if (File.Exists(path) && Hash(File.ReadAllBytes(path))==old.Hash) File.Delete(path);
-            }
             if (s.Active.Length==0) File.Delete(statePath);
             return true;
         });
+    }
+    void RemoveUnused(IEnumerable<Entry> owned,IEnumerable<Entry> keep)
+    {
+        var retained=new HashSet<string>(keep.Select(Fragment),StringComparer.Ordinal);
+        foreach (var old in owned.Where(e=>!retained.Contains(Fragment(e)))) {
+            string path=Path.Combine(folder,Fragment(old));
+            if (File.Exists(path) && Hash(File.ReadAllBytes(path))==old.Hash) File.Delete(path);
+        }
     }
     static void WriteAtomic(string destination,byte[] data,byte[] expected)
     {
@@ -162,6 +170,7 @@ internal sealed class ApoBridge
                     if (file.Length!=expected.Length || !reader.ReadBytes(expected.Length).SequenceEqual(expected))
                         throw new IOException("写入前 APO 主配置发生变化");
                 }
+                // Same-directory atomic replacement. The exact original is already in state.Original.
                 File.Replace(temp,destination,null);
             }
         } finally { if (File.Exists(temp)) File.Delete(temp); }
