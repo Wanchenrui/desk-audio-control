@@ -9,6 +9,8 @@ $sources = @(
     (Join-Path $project 'EqMatcher.cs')
     (Join-Path $project 'MicAdvisor.cs')
     (Join-Path $project 'MicSpectrum.cs')
+    (Join-Path $project 'TuningStream.cs')
+    (Join-Path $project 'LoopbackComparison.cs')
     (Join-Path $project 'LevelPlanner.cs')
     (Join-Path $project 'BluetoothLink.cs')
     (Join-Path $project 'DevicePresence.cs')

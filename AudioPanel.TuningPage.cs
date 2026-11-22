@@ -24,7 +24,10 @@ internal sealed partial class AudioPanel
     EqTable filterList;
     FlatSlider strength,phoneCap;
     Caption strengthLabel,capLabel,apoStatus;
-    PillButton applyEq,restoreEq;
+    PillButton applyEq,restoreEq,measureEq;
+    TuningStream.BandReading dryBands;
+    string dryEndpoint;
+    int dryLevel,dryRate;
     EqPlan eqPlan;
     EqPreset plannedPreset;
     EqCandidate[] suggested=new EqCandidate[0];
@@ -135,6 +138,7 @@ internal sealed partial class AudioPanel
         apoStatus=Cap(eq,"",9f,false,Tone.Muted); apoStatus.Wrap=true;
         applyEq=TuneButton(eq,"应用到此端口",()=>ChangeEq(true));
         restoreEq=TuneButton(eq,"还原 EQ",()=>ChangeEq(false));
+        measureEq=TuneButton(eq,"测量参考音",MeasureEq);
         stopAudio=TuneButton(page,"停止",CancelTuningJob);
         outputBox.SelectedIndexChanged+=delegate { if (!filling) { CancelTuningJob(); MatchPreset(); ReadApoStatus(); RefreshTuneActions(); } };
         inputBox.SelectedIndexChanged+=delegate { if (!filling) { CancelTuningJob(); diagnosis=null; RefreshTuneActions(); } };
@@ -177,6 +181,7 @@ internal sealed partial class AudioPanel
         int by=P(130)+tableH+P(8);
         apoStatus.SetBounds(m,by+P(40),iw,P(44));
         applyEq.SetBounds(m,by+P(90),P(150),P(36)); restoreEq.SetBounds(m+P(156),by+P(90),P(120),P(36));
+        measureEq.SetBounds(m+P(282),by+P(90),P(136),P(36));
         listenA.SetBounds(m,by,P(132),P(36)); listenB.SetBounds(m+P(142),by,P(132),P(36));
         exportEq.SetBounds(m+P(284),by,P(132),P(36));
         int below=y+P(166)+(tuneTab==2 ? eqH : P(274))+P(7);
@@ -260,6 +265,10 @@ internal sealed partial class AudioPanel
         exportEq.Enabled=eqPlan!=null;
         applyEq.Enabled=idle && eqPlan!=null && apo!=null && apoError==null && output!=null && output.Port.MixRate>0;
         restoreEq.Enabled=idle && apo!=null && apoError==null && apoApplied!=null;
+        bool matches=eqPlan!=null && apoApplied==eqPlan.Filter.Model+" · "+eqPlan.Strength+"%";
+        measureEq.Enabled=idle && output!=null && apo!=null && apoError==null && supported &&
+            (apoApplied==null || (matches && dryBands!=null && dryEndpoint==output.Port.Id));
+        measureEq.Text=apoApplied==null ? "测量应用前" : "测量应用后";
         apoStatus.Text=apoError ?? (apo==null ? "未找到 Equalizer APO，可试听或导出。" :
             (apoApplied==null ? "尚未应用。" : "已写入配置 · "+apoApplied+"。")+" 端口需在 APO 中注册，独占播放会绕过系统效果。");
         var shownPort=tuneTab==1 ? input : output;
@@ -272,6 +281,34 @@ internal sealed partial class AudioPanel
         filterList.Bind(eqPlan==null ? null : eqPlan.Filter);
         modelStatus.Text=Preset==null ? (suggested.Length==0 ? "请选择实物型号。" : "请确认型号 · "+suggested[0].Preset.Model+" · "+suggested[0].Reason) :
             eqPlan==null ? "当前端口采样率不足以应用该预设" : eqMatchReason+" · "+rate+" Hz · 预设频响余量 "+eqPlan.HeadroomDb.ToString("F1")+" dB";
+    }
+    async void MeasureEq()
+    {
+        if (tuningJob!=null || ramp!=null || TuneOut==null) return;
+        var output=TuneOut; var plan=eqPlan; string id=output.Port.Id;
+        var job=new CancellationTokenSource(); tuningJob=job; pendingRoute=null;
+        try {
+            ReadApoStatus();
+            if (apoError!=null || apo==null || plan==null) throw new InvalidOperationException(apoError ?? "请先选择可以应用的预设");
+            string applied=apoApplied;
+            int level=audio.Level(id), rate=output.Port.MixRate;
+            if (audio.Muted(id) || level==0) throw new InvalidOperationException("端口静音或音量为零");
+            if (applied!=null && (dryBands==null || dryEndpoint!=id || dryLevel!=level || dryRate!=rate ||
+                applied!=plan.Filter.Model+" · "+plan.Strength+"%"))
+                throw new InvalidOperationException("请在同一端口、音量和采样率下先测量应用前的参考音");
+            RefreshTuneActions(); TuneMessage("正在播放并测量低电平参考音…");
+            var reading=await Task.Run(()=>TuningStream.MeasureBands(id,audio.TuningGuard,job.Token));
+            job.Token.ThrowIfCancellationRequested(); ReadApoStatus();
+            if (apoError!=null || apoApplied!=applied || audio.Level(id)!=level || audio.Muted(id) ||
+                TuneOut==null || TuneOut.Port.MixRate!=rate || !Same(TuneOut.Port.Id,id))
+                throw new InvalidOperationException("测量期间端口、音量或配置已变化，请重测");
+            if (applied==null) {
+                dryBands=reading; dryEndpoint=id; dryLevel=level; dryRate=rate;
+                TuneMessage("已记录应用前的频带能量。应用 EQ 后可测量同一参考音。");
+            } else TuneMessage(dryBands.Compare(reading,plan));
+        } catch (OperationCanceledException) { if (!IsDisposed) TuneMessage("已停止"); }
+        catch (Exception error) { if (!IsDisposed) TuneMessage(error.Message,true); }
+        finally { tuningJob=null; job.Dispose(); if (!IsDisposed) RefreshTuneActions(); }
     }
     void ReadApoStatus()
     {

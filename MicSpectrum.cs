@@ -4,15 +4,20 @@ using System;
 // rate; the FFT work arrays are cleared after each frame.
 internal sealed class MicSpectrum
 {
-    const int N=2048,Bands=24;
-    readonly double[] real=new double[N], imag=new double[N], window=new double[MicAnalysis.Block];
-    readonly int[] band=new int[N/2+1];
+    const int Bands=24;
+    readonly int N;
+    readonly double[] real,imag,window;
+    readonly int[] band;
     internal readonly double[] Centers=new double[Bands];
-    internal MicSpectrum()
+    internal MicSpectrum(int rate=MicAnalysis.Rate)
     {
-        double ratio=Math.Log(MicAnalysis.Rate/2.0/30);
+        window=new double[rate/20];
+        int size=1;
+        while (size<window.Length) size*=2;
+        N=size; real=new double[N]; imag=new double[N]; band=new int[N/2+1];
+        double ratio=Math.Log(rate/2.0/30);
         for (int k=0;k<Bands;k++) Centers[k]=30*Math.Exp((k+.5)*ratio/Bands);
-        for (int k=1;k<band.Length;k++) band[k]=Math.Min(Bands-1,Math.Max(0,(int)(Bands*Math.Log(k*MicAnalysis.Rate/(N*30.0))/ratio)));
+        for (int k=1;k<band.Length;k++) band[k]=Math.Min(Bands-1,Math.Max(0,(int)(Bands*Math.Log(k*rate/(N*30.0))/ratio)));
         for (int i=0;i<window.Length;i++) window[i]=.5-.5*Math.Cos(2*Math.PI*i/(window.Length-1));
     }
     internal double[] Energy(short[] samples)

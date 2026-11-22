@@ -6,6 +6,11 @@ internal sealed class EqPlan
     public EqPreset Filter;
     public int Strength, Rate;
     public double HeadroomDb;
+    internal double Expected(double hz)
+    {
+        double c=Math.Cos(2*Math.PI*hz/Rate);
+        return Filter.Preamp+Filter.Rows.Sum(r=>new EqPreset.Band(r.Type,r.Hz,r.Gain,r.Q,Rate).ResponseDb(c,2*c*c-1));
+    }
 }
 internal static class EqPlanner
 {
