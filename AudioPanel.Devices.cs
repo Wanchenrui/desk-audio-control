@@ -112,7 +112,7 @@ internal sealed partial class AudioPanel
         counts.SetBounds(pad, P(20), Math.Max(0, w - 2 * pad - P(210)), P(34));
         showAll.SetBounds(w - pad - P(190), P(22), P(190), P(30));
         int top = P(68), bottom = h - P(56);
-        int listW = Math.Max(P(250), (w - 2 * pad - gap) * 40 / 100);
+        int listW = Math.Max(P(250), (w - 2 * pad - gap) * 46 / 100);
         devices.SetBounds(pad, top, listW, Math.Max(0, bottom - top));
         status.SetBounds(pad, h - P(44), Math.Max(0, w - 2 * pad), P(28));
         int x = pad + listW + gap, cw = Math.Max(0, w - x - pad);
@@ -143,7 +143,18 @@ internal sealed partial class AudioPanel
             PillButton[] row = f == 0 ? new PillButton[] { route[0], mute[0], balance, fx } : new PillButton[] { route[1], mute[1] };
             int bg = P(8), bw = (iw - (row.Length - 1) * bg) / row.Length, by = y;
             if (f == 1) bw = Math.Min(bw, P(150));
-            for (int i = 0; i < row.Length; i++) row[i].SetBounds(m + i * (bw + bg), by, bw, P(32));
+            // Playback has four labels of different length: each gets its own width, and the spare room is shared evenly.
+            int[] label = f == 0 ? new[] { P(58), P(44), P(72), P(72) } : null;
+            int labels = 0;
+            if (label != null) foreach (int v in label) labels += v;
+            bool fit = label != null && labels + (row.Length - 1) * bg <= iw;
+            int spare = fit ? (iw - (row.Length - 1) * bg - labels) / row.Length : 0;
+            int px = m;
+            for (int i = 0; i < row.Length; i++)
+            {
+                int bwi = fit ? label[i] + spare : bw;
+                row[i].SetBounds(px, by, bwi, P(32)); px += bwi + bg;
+            }
         }
     }
 }
