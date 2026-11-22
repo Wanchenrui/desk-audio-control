@@ -93,9 +93,11 @@ internal sealed class EqPreset
         }
         public double ResponseDb(double cosine,double cos2)
         {
-            // |b0+b1*z^-1+b2*z^-2|² / |1+a1*z^-1+a2*z^-2|².
-            double num=b0*b0+b1*b1+b2*b2+2*(b0*b1+b1*b2)*cosine+2*b0*b2*cos2;
-            double den=1+a1*a1+a2*a2+2*(a1+a1*a2)*cosine+2*a2*cos2;
+            // Rotate by one sample to avoid subtracting nearly equal powers near DC.
+            double sineSquared=(1-cos2)/2;
+            double x=(b0+b2)*cosine+b1, y=(1+a2)*cosine+a1;
+            double num=x*x+(b0-b2)*(b0-b2)*sineSquared;
+            double den=y*y+(1-a2)*(1-a2)*sineSquared;
             return 10*Math.Log10(Math.Max(1e-24,num)/Math.Max(1e-24,den));
         }
         public void Filter(double[] samples)

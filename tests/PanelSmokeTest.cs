@@ -192,12 +192,14 @@ internal sealed partial class AudioPanel
         outputBox.SelectedIndex=outputBox.Items.Cast<TuneEndpoint>().ToList().FindIndex(p=>p.Port.Id=="usb");
         RestoreTuned(TuneOut); if (device.Level("usb")!=88) throw new Exception("manual tuning undo");
         inputBox.SelectedIndex=inputBox.Items.Cast<TuneEndpoint>().ToList().FindIndex(p=>p.Port.Id=="desk");
-        diagnosis=new MicReport { Low=true,SpeechDb=-35,NoiseDb=-62 }; diagnosedLevel=50; diagnosedPort="desk";
-        ApplyMicFix(); if (device.Level("desk")!=58) throw new Exception("doctor repair");
+        diagnosis=new MicReport { Low=true,SpeechDb=-35,NoiseDb=-62,PeakDb=-20 }; diagnosedLevel=50; diagnosedPort="desk";
+        ApplyMicFix(); if (device.Level("desk")!=56) throw new Exception("doctor repair");
         RestoreTuned(TuneIn); if (device.Level("desk")!=50) throw new Exception("doctor repair undo");
         var source=groups.First(p=>p.Key=="old-music"); var dest=groups.First(p=>p.Key=="usb");
-        levels.Learn(source.Key,65,-35); levels.Learn(dest.Key,30,-70);
-        if (MatchedLevel(source,dest,"old-music","usb",88,true)!=20) throw new Exception("relative gain transfer between two calibrated devices");
+        for (int n=0;n<3;n++) { levels.Learn(source.Key,65,-35); levels.Learn(dest.Key,30,-70); }
+        var plan=LevelPlanner.Plan(55,88,device.GainPoints("old-music"),device.GainPoints("usb"),
+            levels.Samples(source.Key),levels.Samples(dest.Key),true,LevelPlanner.Night(DateTime.Now.Hour),DateTime.UtcNow);
+        if (plan.Target!=20) throw new Exception("relative gain transfer between two calibrated devices");
         Console.WriteLine("P3 pre-route attenuation, manual/automatic fade, peak cut, call/volume interruption, failure rollback, route undo and microphone repair/restore passed.");
     }
 

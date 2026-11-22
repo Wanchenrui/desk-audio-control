@@ -35,7 +35,7 @@ internal sealed partial class AudioPanel
         var result = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
         foreach (var g in devices)
         {
-            foreach (var p in g.Outputs.Concat(g.Inputs)) result[p.Id] = g.Name + (p.Flow == 0 ? " · 播放" : " · 录音");
+            foreach (var p in g.Outputs.Concat(g.Inputs).Where(DevicePresence.Available)) result[p.Id] = g.Name + (p.Flow == 0 ? " · 播放" : " · 录音");
             foreach (var id in g.SensedOutputs.Concat(g.SensedInputs)) result["jack:" + id] = g.Name + " · 插孔";
         }
         return result;
@@ -141,6 +141,13 @@ internal sealed partial class AudioPanel
                 {
                     inputs = BluetoothPlan.InputTargets(g,snap.Inputs,IndependentMic(snap.Inputs));
                     evidence.PairCurrentInput = inputs != null;
+                    if (inputs!=null) {
+                        var mic=snap.Groups.SelectMany(x=>x.Inputs).FirstOrDefault(p=>inputs.Where((v,i)=>!Same(v,snap.Inputs[i])).Any(v=>Same(v,p.Id)));
+                        if (mic!=null && mic.Presence!=null && mic.Presence.MaxLevel<2 && !snap.Inputs.Any(v=>Same(v,mic.Id))) {
+                            best.Level=Math.Min(best.Level,mic.Presence.MaxLevel);
+                            evidence.ConfirmationReason="独立话筒 · "+mic.Presence.Reason;
+                        }
+                    }
                 }
                 catch (InvalidOperationException error) { evidence.Guard = error.Message; evidence.GuardCode = "bluetooth_pair"; }
             }
@@ -250,9 +257,13 @@ internal sealed partial class AudioPanel
                 journal.Add(skipped); return;
             }
             if (guard.MaxLevel>1) volumeChange=PrepareLanding(intent.Target,roles[1],intent.Id);
-            if (volumeChange!=null) {
-                string protection=audio.TuningGuard();
-                if (protection!=null) throw new InvalidOperationException(protection);
+            var finalGuard=audio.RouteGuard(roles);
+            if (finalGuard.Blocked || (finalGuard.MaxLevel==1 && (!confirmed || volumeChange!=null))) {
+                AbortLanding(volumeChange,intent.Before);
+                intent.Evidence.Guard=finalGuard.Reason; intent.Evidence.GuardCode=finalGuard.Code;
+                var skipped=DecisionRecord.Create(intent.Source,intent.Candidates,intent.Evidence.Explain(),"skipped");
+                skipped.ReasonCode=finalGuard.Code; skipped.Scene=intent.Scene; skipped.Related=intent.Id;
+                skipped.Evidence=intent.Evidence; skipped.Timing=intent.Timing; journal.Add(skipped); return;
             }
             writing = true;
             audio.OutputWritesComplete = () => intent.Timing.WriteMs = RouteTiming.Elapsed(since,Stopwatch.GetTimestamp());

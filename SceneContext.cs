@@ -53,7 +53,7 @@ internal static class SceneContext
         catch (System.ComponentModel.Win32Exception) { return null; }
     }
 
-    public static SceneSignals Read(IEnumerable<AudioItem> inputs,IEnumerable<AudioItem> outputs,string[] roles,bool ignoreOwnStreams = false)
+    public static SceneSignals Read(IEnumerable<AudioItem> inputs,IEnumerable<AudioItem> outputs,string[] roles,bool ignoreOwnStreams = false,bool collectPeaks = false)
     {
         var result = new SceneSignals { Hour = DateTime.Now.Hour };
         try
@@ -85,8 +85,9 @@ internal static class SceneContext
                 bool comm = RouteTransaction.Equal(p.Id,roles[2]);
                 sawCommunication |= comm;
                 bool active=false;
-                result.Sessions += AudioCore.ActiveSessions(p.Id,sessionPid => {
+                AudioCore.ActiveSessions(p.Id,sessionPid => {
                     if (ignoreOwnStreams && sessionPid==self) return;
+                    result.Sessions++;
                     active=true;
                     string kind = Category(sessionPid);
                     categories.Add(kind);
@@ -95,7 +96,7 @@ internal static class SceneContext
                     if (kind == "会议" || (comm && !RouteTransaction.Equal(roles[1],p.Id))) result.Communicating = true;
                     if (comm && kind != "音乐" && kind != "影音" && kind != "游戏") result.SharedBusy = true;
                 });
-                if (active && ignoreOwnStreams) {
+                if (active && collectPeaks) {
                     try { if (AudioCore.Peak(p.Id)>.001f) result.Audible.Add(p.Id); }
                     catch (COMException) { }
                     catch (InvalidCastException) { }

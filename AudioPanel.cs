@@ -36,7 +36,8 @@ internal sealed partial class AudioPanel : Form
     Dictionary<string,int> corrections;
     Dictionary<string,long> arrivalsUntil=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
     string selectedPort;
-    long selectedUntil;
+    long selectedUntil,nextPresenceHistory;
+    readonly Dictionary<string,long> missingSince=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
     readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
     readonly NotifyIcon tray = new NotifyIcon();
     readonly Stopwatch clock = Stopwatch.StartNew();
@@ -111,7 +112,7 @@ internal sealed partial class AudioPanel : Form
         for (int i = 0; i < pages.Length; i++) pages[i].Visible = i == index;
         if (index == UpdatePageIndex) { rail.Badge(UpdatePageIndex, false); if (updates != null) updates.Visit(); }
         if (index!=TunePageIndex) CancelTuningJob();
-        if (built && index==TunePageIndex) RefreshTuningPage();
+        if (built && index==TunePageIndex) { rail.Badge(TunePageIndex,false); RefreshTuningPage(); }
         if (built && index == 0) RefreshLevels();
     }
     void LayoutAll()

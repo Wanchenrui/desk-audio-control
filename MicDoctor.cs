@@ -42,7 +42,7 @@ internal sealed class MicAnalysis
 {
     public const int Rate=32000, Block=1600, QuietBlocks=30, TotalBlocks=100;
     readonly List<double> mic=new List<double>(), render=new List<double>();
-    readonly double[] lineReal=new double[2], lineImag=new double[2], linePower=new double[2];
+    readonly double[] lineReal=new double[6], lineImag=new double[6], linePower=new double[6];
     static readonly double[][] cos=Basis(true), sin=Basis(false);
     double quietEnergy, maxPeak;
     int clipped;
@@ -81,12 +81,13 @@ internal sealed class MicAnalysis
     bool Contaminated(int i,double floor)
     {
         // Stationary broad noise and mains hum alone must not trigger a speech retry.
-        bool wideSpeech=bands[i].Count(v=>v>bands[i].Max()*.06)>=4 && Share(i,150,3500)>.75;
+        double peak=bands[i].Max();
+        bool wideSpeech=bands[i].Count(v=>v>peak*.06)>=4 && Share(i,150,3500)>.75;
         return SpeechShape(i) && mic[i]>.004 && (mic[i]>floor*2 || wideSpeech);
     }
     static double[][] Basis(bool cosine)
     {
-        return new[]{50,60}.Select(hz=>Enumerable.Range(0,Rate/2).Select(i=>{
+        return new[]{50,60,100,120,150,180}.Select(hz=>Enumerable.Range(0,Rate/2).Select(i=>{
             double angle=2*Math.PI*hz*i/Rate;
             return cosine ? Math.Cos(angle) : Math.Sin(angle);
         }).ToArray()).ToArray();
@@ -102,11 +103,11 @@ internal sealed class MicAnalysis
             if (Math.Abs(x)>=.995) clipped++;
             if (block>=QuietBlocks) continue;
             int at=(block*Block+i)%(Rate/2);
-            for (int f=0;f<2;f++) { lineReal[f]+=x*cos[f][at]; lineImag[f]+=x*sin[f][at]; }
+            for (int f=0;f<linePower.Length;f++) { lineReal[f]+=x*cos[f][at]; lineImag[f]+=x*sin[f][at]; }
         }
         if (block<QuietBlocks) {
             quietEnergy+=power;
-            if ((block+1)%10==0) for (int f=0;f<2;f++) {
+            if ((block+1)%10==0) for (int f=0;f<linePower.Length;f++) {
                 linePower[f]+=2*(lineReal[f]*lineReal[f]+lineImag[f]*lineImag[f])/(Rate/2);
                 lineReal[f]=lineImag[f]=0;
             }
@@ -142,7 +143,9 @@ internal sealed class MicAnalysis
         result.NarrowBand=voices.Length>=15 && voices.Average(i=>Share(i,1600,3900))>.03 &&
             voices.Average(i=>Share(i,4100,15000))<.001;
         int strongest=linePower[0]>linePower[1] ? 0 : 1;
-        if (!result.QuietContaminated && result.NoiseDb > -65 && linePower[strongest]>.38*quietEnergy) result.HumHz=strongest==0 ? 50 : 60;
+        double fundamental=linePower[strongest];
+        double harmonicPower=fundamental+linePower[strongest+2]+linePower[strongest+4];
+        if (!result.QuietContaminated && result.NoiseDb > -65 && fundamental>.06*quietEnergy && harmonicPower>.38*quietEnergy) result.HumHz=strongest==0 ? 50 : 60;
         // Look for correlated playback preceding the microphone envelope by 0–250 ms.
         // A missing meter is represented by -1, never interpreted as evidence of echo.
         for (int lag=0;lag<=5;lag++) {

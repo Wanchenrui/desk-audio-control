@@ -16,7 +16,7 @@ internal class PanelAudio
     public virtual void RouteInputs(string[] targets,string[] expected) { AudioCore.RouteRoles(targets,1,expected); }
     public virtual SceneSignals Context(List<SmartGroup> groups,string[] roles)
     {
-        return SceneContext.Read(groups.SelectMany(g => g.Inputs),groups.SelectMany(g => g.Outputs),roles,true);
+        return SceneContext.Read(groups.SelectMany(g => g.Inputs),groups.SelectMany(g => g.Outputs),roles,true,true);
     }
     public virtual GainPoint[] GainPoints(string id) { return AudioCore.GainPoints(id); }
     public virtual int Level(string id) { return AudioCore.Volume(id); }

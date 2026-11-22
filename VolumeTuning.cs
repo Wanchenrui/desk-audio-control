@@ -119,10 +119,11 @@ internal sealed class VolumeTuning
         return tx;
     }
     void Save(VolumeChange tx) { store.Put("TuneUndo/"+tx.Endpoint,json.Serialize(tx)); }
-    public VolumeChange Begin(string id,string owner,int start)
+    public VolumeChange Begin(string id,string owner,int start,int? expected=null)
     {
         return store.WithFreshValues(delegate {
             int original=read(id);
+            if (expected.HasValue && original!=expected.Value) throw new InvalidOperationException("音量已被手动调整，请重新选择");
             var tx=new VolumeChange { Endpoint=id,Owner=owner,Original=original,Last=original,Next=original };
             Save(tx); WriteStep(tx,start); return tx;
         });

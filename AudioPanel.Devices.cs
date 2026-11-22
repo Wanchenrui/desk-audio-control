@@ -12,7 +12,7 @@ internal sealed partial class AudioPanel
     Caption counts, status, heroName, heroDetail;
     Card heroCard;
     HeroTile hero;
-    PillButton roleButton, balance, fx;
+    PillButton roleButton, balance, fx,eqShortcut;
     readonly Card[] lane = new Card[2];
     readonly Caption[] laneName = new Caption[2], laneValue = new Caption[2];
     readonly PillButton[] picker = new PillButton[2], route = new PillButton[2], mute = new PillButton[2];
@@ -41,6 +41,14 @@ internal sealed partial class AudioPanel
         roleButton = new PillButton { Text = "识别用途", Kind = ButtonLook.Soft, AccessibleName = "设备用途" };
         roleButton.Click += delegate { PickRole(); };
         heroCard.Controls.Add(roleButton);
+        eqShortcut=Pill(heroCard,"耳机 EQ",ButtonLook.Soft,"查看此端口的耳机 EQ",delegate {
+            var port=Chosen(0);
+            rail.Index=TunePageIndex; SelectTuneTab(2);
+            if (port!=null) {
+                var target=outputBox.Items.Cast<TuneEndpoint>().FirstOrDefault(p=>Same(p.Port.Id,port.Id));
+                if (target!=null) outputBox.SelectedItem=target;
+            }
+        });
         for (int f = 0; f < 2; f++) BuildLane(page, f);
     }
 
@@ -125,7 +133,9 @@ internal sealed partial class AudioPanel
         hero.SetBounds(P(18), (heroH - P(60)) / 2, P(60), P(60));
         heroName.SetBounds(P(92), P(14), textW, P(30));
         heroDetail.SetBounds(P(92), P(46), textW, P(22));
-        roleButton.SetBounds(P(92), P(76), Math.Min(P(250), textW), P(30));
+        int roleWidth=Math.Min(P(250),Math.Max(P(80),textW-P(94)));
+        roleButton.SetBounds(P(92),P(76),roleWidth,P(30));
+        eqShortcut.SetBounds(roleButton.Right+P(6),P(76),Math.Min(P(88),Math.Max(0,textW-roleWidth-P(6))),P(30));
         for (int f = 0; f < 2; f++)
         {
             int m = P(18), iw = Math.Max(0, cw - 2 * m), ch = lane[f].Height;

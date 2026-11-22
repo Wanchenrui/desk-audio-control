@@ -23,26 +23,6 @@ internal static class LocalSettings
     public static void Log(string message) { try { Directory.CreateDirectory(Folder); File.WriteAllText(Path.Combine(Folder,"session.txt"),DateTime.Now.ToString("s")+" "+message,Encoding.UTF8); } catch(IOException) {} catch(UnauthorizedAccessException) {} }
 }
 
-// A jack identifies the socket, since a passive analog headset supplies no model ID.
-// Promote a newly sensed plug for the duration of this connection.
-internal sealed class PlugChanges
-{
-    HashSet<string> previous;
-    readonly HashSet<string> inserted=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    public void Observe(List<SmartGroup> devices)
-    {
-        var current=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach(var g in devices){
-            current.UnionWith(g.SensedOutputs);current.UnionWith(g.SensedInputs);
-            if(g.Kind=="显示器音频")current.UnionWith(g.Outputs.Select(p=>p.Id));
-        }
-        inserted.IntersectWith(current);
-        if(previous!=null)inserted.UnionWith(current.Where(id=>!previous.Contains(id)));
-        previous=current;
-    }
-    public bool Recent(SmartGroup g,int flow){return (flow==0?g.Outputs:g.Inputs).Any(p=>inserted.Contains(p.Id));}
-}
-
 internal static class DeskIcon
 {
     [DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);

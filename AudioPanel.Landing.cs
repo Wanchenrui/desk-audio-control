@@ -81,7 +81,8 @@ internal sealed partial class AudioPanel
             LevelPlanner.Night(now.ToLocalTime().Hour),now,ReadNumber("HeadphoneCeiling/"+g.Key,60,1,60));
         rampHeadphones=phones;
         if (original==rampPlan.Target && !phones) return null;
-        try { return levels.Begin(target,owner,rampPlan.Start); }
+        if (audio.Muted(target) || audio.TuningGuard()!=null) return null;
+        try { return levels.Begin(target,owner,rampPlan.Start,original); }
         catch { RollbackLevel(target,owner); throw; }
     }
     static bool IsHeadphoneName(string text)

@@ -50,14 +50,25 @@ internal sealed partial class AudioPanel
         long now=clock.ElapsedMilliseconds;
         var previous=new HashSet<string>(groups.SelectMany(g=>g.Outputs.Concat(g.Inputs)).Select(p=>p.Id),StringComparer.OrdinalIgnoreCase);
         var next=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
-        if (corrections==null) corrections=DevicePresence.Corrections(journal.Records());
+        if (corrections==null || now>=nextPresenceHistory) {
+            try { corrections=DevicePresence.Corrections(journal.Records()); }
+            catch (Exception error) { corrections=new Dictionary<string,int>(); Fail("设备纠正记录暂不可读 · "+error.Message); }
+            nextPresenceHistory=now+60000;
+        }
+        var current=new HashSet<string>(snap.Groups.SelectMany(g=>g.Outputs.Concat(g.Inputs)).Select(p=>p.Id),StringComparer.OrdinalIgnoreCase);
+        if (remember) {
+            foreach (var id in missingSince.Where(kv=>now-kv.Value>=2000).Select(kv=>kv.Key).ToArray()) missingSince.Remove(id);
+            foreach (var id in previous.Except(current,StringComparer.OrdinalIgnoreCase)) missingSince[id]=now;
+        }
         foreach (var g in snap.Groups)
         {
             int count; corrections.TryGetValue(g.Key,out count);
             foreach (var p in g.Outputs.Concat(g.Inputs)) {
                 long until;
                 arrivalsUntil.TryGetValue(p.Id,out until);
-                if (hasSnapshot && !previous.Contains(p.Id)) until=now+30000;
+                long lost;
+                bool bouncing=missingSince.TryGetValue(p.Id,out lost) && now-lost<2000;
+                if (hasSnapshot && !previous.Contains(p.Id) && !bouncing) until=now+30000;
                 if (until>now) next[p.Id]=until;
                 p.Presence=DevicePresence.Assess(p,snap.Signals.Audible.Contains(p.Id),until>now,
                     selectedUntil>now && Same(selectedPort,p.Id),count);
@@ -113,6 +124,8 @@ internal sealed partial class AudioPanel
             if (cycleOnReady) { cycleOnReady = false; Act(Cycle); }
             else if (preferNew && (added.Count > 0 || sceneChanged || topology))
                 ConsiderRoute(snap,reasons,since,added.ToArray());
+            if (presets!=null && added.Count>0 && groups.Where(g=>added.Contains(g.Key)).Any(g=>
+                g.Outputs.Any(p=>EqPreset.Match(presets,g.Name,p.Name,p.Bus)!=null))) rail.Badge(TunePageIndex,true);
             RefreshSmartSettings();
             try { ObserveComfort(); RefreshTuningPage(); } catch (Exception e) { Fail(e.Message); }
             var ordered = groups.OrderBy(g => !Primary(g)).ThenBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
@@ -164,6 +177,7 @@ internal sealed partial class AudioPanel
         heroName.Text = g == null ? "等待设备连接" : g.Name;
         var port=g==null ? null : SmartPolicy.Pick(g,0,defaultOut) ?? g.Outputs.Concat(g.Inputs).FirstOrDefault();
         var state=port==null ? null : port.Presence;
+        eqShortcut.Visible=g!=null && g.Outputs.Any(DevicePresence.Available) && !g.Virtual;
         heroDetail.Text = g == null ? "接入 USB 或蓝牙音频设备后会自动出现" : g.Details +
             (state==null || g.Virtual ? "" : " · "+state.State+" · "+state.Reason);
         hero.Glyph = g == null ? "" : GlyphFor(g, SmartPolicy.RoleLabel(g));

@@ -242,11 +242,11 @@ internal sealed partial class AudioPanel
         int[] history=output==null ? new int[0] : levels.History(output.Group.Key);
         comfortState.Text=(history.Length==0 ? "尚无舒适音量记录。" :
             "已记录 "+history.Length+" 次，舒适中位值 "+Landing.Percentile(history,.5)+"%。")+
-            "\n用同一参考音找到舒适响度，再记住当前音量。启用后也会学习稳定的手动音量调整。\n耳机初次切换上限 35%，有历史后按高分位限制，最高 60%。";
+            "\n用同一参考音找到舒适响度，再记住当前音量。启用后也会学习稳定的手动音量调整。\n耳机初次切换上限 35%，积累足够的同一时段记录后按高分位限制，最高 60%。";
         forgetButton.Enabled=idle && history.Length>0;
         restoreOutput.Enabled=idle && output!=null && levels.Saved(output.Port.Id)!=null;
         diagnoseButton.Enabled=idle && input!=null;
-        doctorText.Text=diagnosis==null ? "开始后前 1.5 秒请保持安静，再以平常音量说话 3.5 秒。\n\n检查电平、削波、底噪、50/60 Hz 嗡声和回声风险。采样仅在内存中分析。"
+        doctorText.Text=diagnosis==null ? "先保持安静，出现说话提示后，以平常音量说话 3.5 秒。\n\n检查电平、削波、底噪、50/60 Hz 嗡声和回声风险。采样仅在内存中分析。"
             : diagnosis.Describe();
         repairButton.Enabled=idle && input!=null && diagnosis!=null && diagnosedPort==input.Port.Id && diagnosis.GainDb!=0;
         repairButton.Text=repairButton.Enabled ? "输入音量 "+diagnosis.GainDb.ToString("+0.#;-0.#")+" dB" : "调整输入音量";
@@ -350,7 +350,7 @@ internal sealed partial class AudioPanel
         int target=MicAdvisor.Target(diagnosis,diagnosedLevel,DeviceGain(p.Port.Id));
         if (target==diagnosedLevel) throw new InvalidOperationException("已到音量边界，请调整话筒距离后重测");
         string owner=Guid.NewGuid().ToString("N");
-        try { levels.Begin(p.Port.Id,owner,target); } catch { RollbackLevel(p.Port.Id,owner); throw; }
+        try { levels.Begin(p.Port.Id,owner,target,diagnosedLevel); } catch { RollbackLevel(p.Port.Id,owner); throw; }
         diagnosis=null; TuneMessage("输入音量已调整至 "+target+"%，可重新检查或还原");
         Activity("麦克风医生",p.Group.Name,"按诊断调整输入音量","tuned");
     }
