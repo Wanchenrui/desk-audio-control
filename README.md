@@ -6,7 +6,9 @@ Windows 托盘音频面板。接入或拔出 USB、蓝牙设备时，面板会�
 
 1. 用有权访问这个私有仓库的账号登录 GitHub，在 [最新正式版](https://github.com/Wanchenrui/desk-audio-control/releases/latest) 的 **Assets** 下下载 **DeskAudio.exe**。
 2. 将 EXE 放在准备长期使用的文件夹里，双击即可运行。程序适用于 64 位 Windows 和 .NET Framework 4.8 或更高版本。换电脑时会重新识别该机的设备。
-3. 打开面板的 **更新** 页，可以立即检查或关闭每天一次的后台检查。检测到新版本后，在发布页下载新版；从托盘退出旧版，再替换同名 EXE。
+3. 从 v1.2.0 起，打开 **更新 → 立即检查**。发现新版本时，点击 **更新至 v… 并重启**。程序会下载附件、验证大小、SHA-256 和程序集版本，然后从原路径重启。下载或校验失败时可以直接重试，新版启动失败时更新组件会尝试恢复旧版。每天一次的后台检查只负责提醒，安装由你发起。
+
+**从 v1.0.0 或 v1.1.0 首次升级**：这两个已发布版本的更新按钮会打开 GitHub。下载 v1.2.0 或更高版本的 `DeskAudio.exe`，从托盘退出旧版后替换原位置的文件并运行。之后即可在应用内完成升级。使用当前 Windows 账户可写的安装目录，即可原位替换并保留登录启动路径。
 
 浏览器登录用于手动下载。要让程序检查这个私有仓库，在 **更新** 页勾选 **允许使用本机 GitHub 登录检查更新**，即可使用已登录的 Git for Windows 或 GitHub CLI。如果新电脑只有这个 EXE，在 **设置更新凭据** 保存一枚细粒度令牌即可。创建时将资源所有者设为 `Wanchenrui`，只选 `desk-audio-control` 仓库，仓库权限选择 **Contents → Read-only**。Windows 使用当前用户的账户加密保存该令牌，可从同一入口移除。[GitHub 令牌说明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 

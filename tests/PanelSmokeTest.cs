@@ -88,6 +88,15 @@ internal sealed partial class AudioPanel
         for (int i = 0; i < 3; i++)
         {
             rail.Index = i; LayoutAll(); Update();
+            if (i == 2)
+            {
+                var available = new UpdateResult(UpdateState.Available,"发现新版本 v1.3.0。","v1.3.0") {
+                    Package = new UpdatePackage(1,123,new String('a',64),new Version(1,3,0))
+                };
+                updates.ShowRelease(available);
+                if (!updates.Controls.Find("InstallUpdate",true).Any(c => c.Visible && c.Enabled))
+                    throw new Exception("In-app update action missing");
+            }
             using (var bmp = new Bitmap(Width,Height)) { DrawToBitmap(bmp,new Rectangle(0,0,Width,Height)); bmp.Save(Path.Combine(folder,"page-"+i+".png")); }
         }
         using (var capture = new System.Windows.Forms.Timer { Interval = 180 })

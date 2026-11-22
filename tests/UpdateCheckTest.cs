@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading;
 
 public static class UpdateCheckTest
 {
@@ -43,6 +45,32 @@ public static class UpdateCheckTest
         var available = Parse(Json("v1.10.0"));
         Expect(available.State == UpdateState.Available && available.Tag == "v1.10.0", "numeric version comparison");
         Expect(available.PageUrl.EndsWith("/releases/tag/v1.10.0") && available.AssetUrl == UpdateCheck.RepositoryUrl + "/releases/download/v1.10.0/DeskAudio.exe", "canonical asset");
+        string sha = new String('a',64);
+        string full = Uploaded.Replace("\"size\":1234", "\"id\":123,\"digest\":\"sha256:" + sha + "\",\"size\":1234");
+        var parsed = Parse(Json("v1.2.0",full));
+        Expect(parsed.Package != null && parsed.Package.Id == 123 && parsed.Package.Size == 1234 && parsed.Package.Hash == sha &&
+            parsed.Package.Version.Equals(new Version(1,2,0)) && !parsed.Authenticated,"public installable metadata");
+        var restricted = UpdateCheck.CheckCore(Installed,(list,token) => token == null ? new UpdateCheck.Reply(404) :
+            new UpdateCheck.Reply(200,Json("v1.2.0",full)),() => "allowed");
+        Expect(restricted.Authenticated && restricted.Package != null,"private asset uses the authorized credential");
+        Expect(available.Package == null && Parse(Json("v1.2.0",full.Replace(sha,"bad"))).Package == null,"missing or invalid SHA disables install");
+        Expect(Parse(Json("v1.2.0",full.Replace("1234","9999999999"))).Package == null,"oversize metadata disables install");
+        Expect(UpdateInstall.IsAssetHost(new Uri("https://release-assets.githubusercontent.com/example")) &&
+            !UpdateInstall.IsAssetHost(new Uri("https://release-assets.githubusercontent.com.example.org/a")) &&
+            !UpdateInstall.IsAssetHost(new Uri("http://release-assets.githubusercontent.com/a")) &&
+            !UpdateInstall.IsAssetHost(new Uri("https://example@release-assets.githubusercontent.com/a")), "redirect trust boundary");
+        using (var source = new MemoryStream(new byte[] { 1,2,3 }))
+        using (var destination = new MemoryStream())
+        {
+            int pct = -1;
+            UpdateInstall.CopyDownload(source,destination,3,n => pct = n,CancellationToken.None);
+            Expect(destination.Length == 3 && pct == 100,"stream progress reaches 100");
+            bool shortRead = false, longRead = false, cancelled = false;
+            try { source.Position = 0; UpdateInstall.CopyDownload(source,destination,4,n => {},CancellationToken.None); } catch (EndOfStreamException) { shortRead = true; }
+            try { source.Position = 0; UpdateInstall.CopyDownload(source,destination,2,n => {},CancellationToken.None); } catch (InvalidDataException) { longRead = true; }
+            try { source.Position = 0; UpdateInstall.CopyDownload(source,destination,3,n => {},new CancellationToken(true)); } catch (OperationCanceledException) { cancelled = true; }
+            Expect(shortRead && longRead && cancelled,"truncated, overlong and cancelled transfers");
+        }
         Expect(Parse(Json("v1.0.0+build.3")).State == UpdateState.Current, "build metadata");
         Expect(Parse(Json("v1.0.0-beta.1")).State == UpdateState.Failed, "prerelease label");
         Expect(Parse(Json("v1.0.0/../../else")).State == UpdateState.Failed, "malformed tag");

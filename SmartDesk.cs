@@ -56,13 +56,22 @@ internal static class DeskIcon
 internal static class Program
 {
     [STAThread] static void Main(string[] args){
+        if (args.Length < 2 || args[0] != "--updated")
+        {
+            EventWaitHandle handoff;
+            if (EventWaitHandle.TryOpenExisting(UpdatePackage.Handoff,out handoff)) { handoff.Dispose(); return; }
+        }
         bool hidden=args.Contains("--tray");
         bool first;
         using(var mutex=new Mutex(true,@"Local\DeskAudioControl.Panel",out first))
         using(var show=new EventWaitHandle(false,EventResetMode.AutoReset,@"Local\DeskAudioControl.Show")){
             if(!first){if(!hidden)show.Set();return;}
             Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-            try{using(var form=new AudioPanel(hidden,show)){if(!hidden)form.Open();Application.Run();}}
+            try{using(var form=new AudioPanel(hidden,show)){
+                if(!hidden)form.Open();
+                form.BeginInvoke((Action)(() => UpdateInstall.Started(args)));
+                Application.Run();
+            }}
             catch(Exception e){LocalSettings.Log(e.ToString());if(!hidden)MessageBox.Show(e.Message,"桌面音频",MessageBoxButtons.OK,MessageBoxIcon.Error);}
         }
     }

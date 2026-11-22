@@ -102,7 +102,7 @@ internal sealed partial class AudioPanel : Form
     void ShowPage(int index)
     {
         for (int i = 0; i < pages.Length; i++) pages[i].Visible = i == index;
-        if (index == 2) rail.Badge(2, false);
+        if (index == 2) { rail.Badge(2, false); if (updates != null) updates.Visit(); }
         if (built && index == 0) RefreshLevels();
     }
     void LayoutAll()

@@ -19,6 +19,8 @@ public sealed class UpdateResult
 {
     public readonly UpdateState State;
     public readonly string Message, Tag, PageUrl, AssetUrl;
+    internal UpdatePackage Package;
+    internal bool Authenticated;
 
     internal UpdateResult(UpdateState state, string message, string tag = null, string asset = null)
     {
@@ -161,7 +163,7 @@ public static class UpdateCheck
         return stored() ?? (useAccount() ? account() : null);
     }
 
-    static string GetCredential()
+    internal static string GetCredential()
     {
         return ChooseCredential(Environment.GetEnvironmentVariable("DESKAUDIO_GITHUB_TOKEN"),
             SavedToken, () => UseSignedInAccount, () => GitForWindowsToken() ?? GitHubCliToken());
@@ -225,6 +227,8 @@ public static class UpdateCheck
     }
     internal sealed class ReleaseAsset
     {
+        public long id { get; set; }
+        public string digest { get; set; }
         public string name { get; set; }
         public string state { get; set; }
         public long size { get; set; }
@@ -244,14 +248,21 @@ public static class UpdateCheck
             !Int32.TryParse(match.Groups[2].Value, out minor) || !Int32.TryParse(match.Groups[3].Value, out patch))
             return new UpdateResult(UpdateState.Failed, "发行标签不符合三段式稳定版本号。");
         const string name = "DeskAudio.exe";
-        if (release.assets == null || !release.assets.Any(a => a != null && a.name == name && a.state == "uploaded" && a.size > 0))
+        var file = release.assets == null ? null : release.assets.FirstOrDefault(a => a != null && a.name == name && a.state == "uploaded" && a.size > 0);
+        if (file == null)
             return new UpdateResult(UpdateState.Failed, "该版本尚未提供可下载的 DeskAudio.exe。", release.tag_name);
         string asset = RepositoryUrl + "/releases/download/" + Uri.EscapeDataString(release.tag_name) + "/" + name;
         var latest = new Version(major, minor, patch);
         bool newer = latest > installed;
         string message = newer ? "发现新版本 " + release.tag_name + "。" :
             (latest == installed ? "已是最新版本 " + release.tag_name + "。" : "已安装版本高于 GitHub 的最新正式版。");
-        return new UpdateResult(newer ? UpdateState.Available : UpdateState.Current, message, release.tag_name, asset);
+        var result = new UpdateResult(newer ? UpdateState.Available : UpdateState.Current, message, release.tag_name, asset);
+        if (newer && file.id > 0 && file.size <= UpdatePackage.SizeLimit &&
+            Regex.IsMatch(file.digest ?? "", @"\Asha256:[0-9a-fA-F]{64}\z"))
+            result.Package = new UpdatePackage(file.id,file.size,file.digest.Substring(7),latest);
+        else if (newer)
+            return new UpdateResult(UpdateState.Available, message + " 附件缺少可用的完整性信息，请查看发布页。",release.tag_name,asset);
+        return result;
     }
 
     internal static UpdateResult CheckCore(Version installed, Func<bool,string,Reply> fetch, Func<string> credential)
@@ -265,7 +276,12 @@ public static class UpdateCheck
             {
                 if (!ValidToken(token)) return new UpdateResult(UpdateState.NeedsAccess, "请检查更新令牌的格式。");
                 reply = fetch(false, token);
-                if (reply.Code == 200) return ReadRelease(reply.Body, installed);
+                if (reply.Code == 200)
+                {
+                    var result = ReadRelease(reply.Body, installed);
+                    result.Authenticated = true;
+                    return result;
+                }
             }
             // Private resources and an absent Release can both yield 404. Probe the releases
             // collection with the same credential to confirm read permission before deciding.

@@ -2,6 +2,8 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
+using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -11,20 +13,25 @@ internal sealed class UpdatePage : Panel
     const string TokenCreationPage = "https://github.com/settings/personal-access-tokens/new?name=DeskAudio%20updates&target_name=Wanchenrui&contents=read";
     readonly Form owner;
     readonly Action<string> notify;
+    readonly Action exitForUpdate;
+    readonly PillButton install = new PillButton();
+    readonly CancellationTokenSource lifetime = new CancellationTokenSource();
+    UpdateResult availableRelease;
     readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
     readonly Card versionCard = new Card(), accessCard = new Card();
     readonly Caption title = new Caption(), heading = new Caption(), status = new Caption(), lastCheck = new Caption();
     readonly Caption accessHeading = new Caption(), accessBody = new Caption();
     readonly ToggleSwitch automatic = new ToggleSwitch(), signedIn = new ToggleSwitch();
     readonly PillButton check = new PillButton(), releases = new PillButton(), access = new PillButton(), create = new PillButton();
-    bool running;
+    bool running, checkedThisRun;
     string pageUrl = UpdateCheck.ReleasesPage;
     readonly string version = UpdateCheck.InstalledVersion.ToString(3);
 
-    public UpdatePage(Form owner, Action<string> notify)
+    public UpdatePage(Form owner, Action<string> notify, Action exitForUpdate)
     {
         this.owner = owner;
         this.notify = notify;
+        this.exitForUpdate = exitForUpdate;
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         Controls.Add(title); Controls.Add(versionCard); Controls.Add(accessCard);
         title.Text = "更新"; title.Pt = 14f; title.Bold = true;
@@ -35,7 +42,10 @@ internal sealed class UpdatePage : Panel
         lastCheck.Role = Tone.Muted; lastCheck.Pt = 8.5f;
         ShowLastCheck();
         Setup(check, "立即检查", ButtonLook.Solid, StartCheck);
-        Setup(releases, "打开发布页", ButtonLook.Soft, delegate { OpenPage(pageUrl); });
+        Setup(install, "更新并重启", ButtonLook.Solid, Install);
+        install.Name = "InstallUpdate";
+        install.Visible = false;
+        Setup(releases, "发行说明", ButtonLook.Ghost, delegate { OpenPage(pageUrl); });
         automatic.Text = "每天在后台检查新版本"; automatic.AccessibleName = automatic.Text;
         automatic.Set(AppConfig.Store.Warning == null && LocalSettings.Get("AutomaticUpdates") != "0");
         automatic.CheckedChanged += delegate {
@@ -43,7 +53,7 @@ internal sealed class UpdatePage : Panel
             catch (Exception e) { automatic.Set(!automatic.Checked); status.Text = e.Message; return; }
             if (automatic.Checked) CheckIfDue();
         };
-        versionCard.Controls.AddRange(new Control[] { heading, status, lastCheck, check, releases, automatic });
+        versionCard.Controls.AddRange(new Control[] { heading, status, lastCheck, check, install, releases, automatic });
 
         accessHeading.Text = "私有仓库访问"; accessHeading.Pt = 11f; accessHeading.Bold = true;
         signedIn.Text = "允许使用本机 GitHub 登录检查更新（Git for Windows 或 GitHub CLI）"; signedIn.AccessibleName = signedIn.Text;
@@ -65,6 +75,10 @@ internal sealed class UpdatePage : Panel
         timer.Interval = 5000;
         timer.Tick += delegate { timer.Interval = 60000; CheckIfDue(); };
         timer.Start();
+    }
+    public void Visit()
+    {
+        if (!checkedThisRun && automatic.Checked) StartCheck();
     }
 
     void Setup(PillButton button, string text, ButtonLook look, Action action)
@@ -89,7 +103,8 @@ internal sealed class UpdatePage : Panel
         status.SetBounds(m, P(44), iw, P(44));
         lastCheck.SetBounds(m, P(90), iw, P(22));
         check.SetBounds(m, P(122), P(116), P(34));
-        releases.SetBounds(m + P(126), P(122), P(172), P(34));
+        install.SetBounds(m + P(126), P(122), P(184), P(34));
+        releases.SetBounds(m + P(availableRelease == null ? 126 : 320), P(122), P(110), P(34));
         automatic.SetBounds(m, P(168), iw, P(32));
         accessCard.SetBounds(pad, y + h1 + gap, cw, h2);
         accessHeading.SetBounds(m, P(10), iw, P(30));
@@ -134,18 +149,14 @@ internal sealed class UpdatePage : Panel
     async void StartCheck()
     {
         if (running || IsDisposed) return;
-        running = true;
-        check.Enabled = access.Enabled = signedIn.Enabled = false;
+        running = checkedThisRun = true;
+        check.Enabled = install.Enabled = access.Enabled = signedIn.Enabled = false;
         status.Role = Tone.Muted; status.Text = "正在向 GitHub 查询最新正式版…";
         try {
             UpdateResult result = await Task.Run(() => UpdateCheck.Check());
             if (IsDisposed || owner.IsDisposed) return;
-            status.Role = ToneOf(result.State); status.Text = result.Message;
-            pageUrl = result.PageUrl ?? UpdateCheck.ReleasesPage;
             bool available = result.State == UpdateState.Available;
-            releases.Text = available ? "查看新版本并下载" : "打开发布页";
-            releases.Kind = available ? ButtonLook.Solid : ButtonLook.Soft;
-            releases.Invalidate();
+            ShowRelease(result);
             if (available && automatic.Checked && LocalSettings.Get("LastNotifiedUpdate") != result.Tag) {
                 if (!owner.Visible || !Visible) notify(result.Tag);
                 LocalSettings.Put("LastNotifiedUpdate", result.Tag);
@@ -161,8 +172,44 @@ internal sealed class UpdatePage : Panel
                     LocalSettings.Put("UpdateAttemptUtc", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
                     ShowLastCheck();
                 } catch (Exception e) { automatic.Set(false); status.Text += " · " + e.Message; }
-                check.Enabled = access.Enabled = signedIn.Enabled = true;
+                check.Enabled = install.Enabled = access.Enabled = signedIn.Enabled = true;
             }
+        }
+    }
+    internal void ShowRelease(UpdateResult result)
+    {
+        status.Role = ToneOf(result.State); status.Text = result.Message;
+        pageUrl = result.PageUrl ?? UpdateCheck.ReleasesPage;
+        availableRelease = result.State == UpdateState.Available && result.Package != null ? result : null;
+        install.Visible = availableRelease != null;
+        if (availableRelease != null) install.Text = "更新至 " + result.Tag + " 并重启";
+        check.Kind = availableRelease == null ? ButtonLook.Solid : ButtonLook.Soft;
+        check.Invalidate();
+        Arrange();
+    }
+
+    async void Install()
+    {
+        if (running || availableRelease == null || IsDisposed) return;
+        running = true;
+        var release = availableRelease;
+        var cancel = lifetime.Token;
+        check.Enabled = install.Enabled = access.Enabled = signedIn.Enabled = automatic.Enabled = false;
+        status.Role = Tone.Muted; status.Text = "正在下载 " + release.Tag + "…";
+        IProgress<int> progress = new Progress<int>(n => {
+            if (running && !IsDisposed) status.Text = n < 100 ? "正在下载 " + release.Tag + " · " + n + "%" : "正在校验安装包并准备重启…";
+        });
+        try {
+            await Task.Run(() => UpdateInstall.Prepare(release,progress.Report,cancel,false));
+            if (!IsDisposed) exitForUpdate();
+        } catch (Exception error) {
+            if (IsDisposed || cancel.IsCancellationRequested) return;
+            string detail = error is UnauthorizedAccessException ? "安装目录不可写，请将程序放在当前用户可写入的目录。" :
+                error is WebException ? "下载失败，请检查网络和私有仓库访问权限，再重试。" : error.Message;
+            status.Role = Tone.Warn; status.Text = "更新未完成。" + detail;
+        } finally {
+            running = false;
+            if (!IsDisposed) check.Enabled = install.Enabled = access.Enabled = signedIn.Enabled = automatic.Enabled = true;
         }
     }
     void OpenPage(string url)
@@ -218,7 +265,7 @@ internal sealed class UpdatePage : Panel
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) timer.Dispose();
+        if (disposing) { lifetime.Cancel(); timer.Dispose(); }
         base.Dispose(disposing);
     }
 }
