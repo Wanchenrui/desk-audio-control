@@ -116,7 +116,7 @@ internal sealed partial class AudioPanel
         var existing = suitable.FirstOrDefault(p => roles.Contains(p.Id,StringComparer.OrdinalIgnoreCase));
         return existing != null ? existing.Id : suitable.Count == 1 ? suitable[0].Id : null;
     }
-    DecisionRecord PlanRoute(Snapshot snap,string source,string[] added)
+    DecisionRecord PlanRoute(Snapshot snap,string source,string[] added,long since)
     {
         var evidence = new SwitchEvidence { DefaultOutput = defaultOut, Scene = scenes.Current, Sessions = snap.Signals.Sessions,
             Ranked = Candidates(journal.Records(),added), Sensitivity = sensitivity, Guard = tuningJob==null ? snap.Signals.Guard() : "正在进行声音调优",
@@ -141,7 +141,9 @@ internal sealed partial class AudioPanel
         if (inputs != null) reason += " · 配对独立话筒 " + NameFor(inputs.Where((v,i) => !Same(snap.Inputs[i],v)).First(),1);
         string result = skip != null ? "skipped" : best.Level == 0 ? "hint" : best.Level == 1 ? "offer" : "prepared";
         var row = DecisionRecord.Create(source,String.Join("、",evidence.Ranked.Select(p => p.Name)),reason,result);
-        row.Scene = scenes.Current; row.Evidence = evidence;
+        row.Scene = scenes.Current; row.Evidence = evidence; row.ReasonCode = evidence.SkipCode();
+        row.Timing = new RouteTiming { ScanStartMs = RouteTiming.Elapsed(since,snap.ScanStart),
+            ScanEndMs = RouteTiming.Elapsed(since,snap.ScanEnd), DecisionMs = RouteTiming.Elapsed(since,Stopwatch.GetTimestamp()) };
         if (best != null) { row.Target = best.Id; row.DeviceKey = best.Key; }
         if (skip != null) return row;
         row.Before = snap.Outputs;
@@ -153,7 +155,7 @@ internal sealed partial class AudioPanel
     {
         try
         {
-            var row = PlanRoute(snap,reasons.ToString(),added);
+            var row = PlanRoute(snap,reasons.ToString(),added,since);
             if (row.Result == "skipped") { journal.Add(row); return; }
             var best = row.Evidence.Winner();
             if (best.Level < 2)
@@ -190,6 +192,7 @@ internal sealed partial class AudioPanel
         if (!preferNew || offer == null || clock.ElapsedMilliseconds >= offerUntil || offer.Scene != scenes.Current)
             throw new InvalidOperationException("建议已过期");
         // Re-enumerate for a delayed click, including endpoint roles and preference edits.
+        long since = Stopwatch.GetTimestamp();
         var snap = TakeSnapshot();
         var connected = new HashSet<string>(Connections(groups).Keys,StringComparer.OrdinalIgnoreCase);
         string mismatch = null;
@@ -197,18 +200,18 @@ internal sealed partial class AudioPanel
             !SameRoles(expectedInputs,snap.Inputs) || snap.Signals.ObservedScene(scenes.Current) != offer.Scene)
             mismatch = "设备或场景已经变化";
         var recent = offer.Evidence.Ranked.Where(p => p.Recent).Select(p => p.Key).ToArray();
-        var row = PlanRoute(snap,"执行建议",recent);
+        var row = PlanRoute(snap,"执行建议",recent,since);
         if (mismatch == null && (row.Result != "offer" || !Same(row.Target,offer.Target) ||
             !(row.InputAfter == null && offer.InputAfter == null || SameRoles(row.InputAfter,offer.InputAfter))))
             mismatch = row.Evidence.SkipReason() ?? "当前建议已变化";
         row.Related = offer.Id;
         if (mismatch != null)
         {
-            row.Result = "skipped"; row.Evidence.Guard = mismatch; row.Reason = row.Evidence.Explain();
+            row.Result = "skipped"; row.ReasonCode = row.Evidence.GuardCode = "stale_offer"; row.Evidence.Guard = mismatch; row.Reason = row.Evidence.Explain();
             journal.Add(row); throw new InvalidOperationException(mismatch);
         }
         row.Result = "prepared";
-        ExecuteRoute(row,Stopwatch.GetTimestamp());
+        ExecuteRoute(row,since);
     }
     void ExecuteRoute(DecisionRecord intent,long since)
     {
@@ -225,6 +228,7 @@ internal sealed partial class AudioPanel
             {
                 intent.Evidence.Guard = guard ?? "角色已改变或处于静默期";
                 var skipped = DecisionRecord.Create(intent.Source,intent.Candidates,intent.Evidence.Explain(),"skipped");
+                skipped.ReasonCode = intent.Evidence.GuardCode ?? "route_changed"; skipped.Timing = intent.Timing;
                 skipped.Related = intent.Id; skipped.Scene = intent.Scene; skipped.Evidence = intent.Evidence;
                 journal.Add(skipped); return;
             }
@@ -234,7 +238,11 @@ internal sealed partial class AudioPanel
                 if (protection!=null) throw new InvalidOperationException(protection);
             }
             writing = true;
-            audio.RoutePair(targets,intent.Before,intent.InputAfter,intent.InputBefore);
+            audio.OutputWritesComplete = () => intent.Timing.WriteMs = RouteTiming.Elapsed(since,Stopwatch.GetTimestamp());
+            try {
+                audio.RoutePair(targets,intent.Before,intent.InputAfter,intent.InputBefore);
+                intent.Timing.ReadbackMs = RouteTiming.Elapsed(since,Stopwatch.GetTimestamp());
+            } finally { audio.OutputWritesComplete = null; }
         }
         catch (Exception e)
         {
@@ -248,14 +256,14 @@ internal sealed partial class AudioPanel
                 catch (Exception) { }
             }
             if (restored) failure.Related = intent.Id; // Keep interrupted intents available for guarded recovery.
-            failure.Scene = intent.Scene; journal.Add(failure); throw;
+            failure.Timing = intent.Timing; failure.Scene = intent.Scene; journal.Add(failure); throw;
         }
         actionRevision++; pendingRoute = null;
         defaultOut = intent.Target; expectedOutputs = targets;
         if (intent.InputAfter != null) { expectedInputs = intent.InputAfter; defaultIn = expectedInputs[1]; }
         quietUntil = clock.ElapsedMilliseconds + 30000;
         var done = DecisionRecord.Create(intent.Source,intent.Candidates,intent.Reason,"applied");
-        done.LatencyMs = (long)((Stopwatch.GetTimestamp() - since) * 1000.0 / Stopwatch.Frequency);
+        done.Timing = intent.Timing; done.LatencyMs = intent.Timing.ReadbackMs;
         done.Related = intent.Id; done.Target = intent.Target; done.DeviceKey = intent.DeviceKey; done.Scene = intent.Scene;
         done.Before = intent.Before; done.InputBefore = intent.InputBefore; done.InputAfter = intent.InputAfter; done.Evidence = intent.Evidence;
         BeginFade(volumeChange);

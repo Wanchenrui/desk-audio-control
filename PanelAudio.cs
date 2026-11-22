@@ -5,11 +5,12 @@ using System.Collections.Generic;
 // Windows boundary for discovery and role changes. The integration test substitutes audio hardware.
 internal class PanelAudio
 {
+    internal Action OutputWritesComplete;
     public virtual List<SmartGroup> Scan() { return AudioDiscovery.Scan(); }
     public virtual string Default(int flow,int role) { return AudioCore.Default(flow,role); }
     public virtual string[] Outputs() { return AudioCore.Defaults(0); }
     public virtual string[] Inputs() { return AudioCore.Defaults(1); }
-    public virtual void RouteOutputs(string[] targets,string[] expected) { AudioCore.RouteRoles(targets,0,expected); }
+    public virtual void RouteOutputs(string[] targets,string[] expected) { AudioCore.RouteRoles(targets,0,expected,OutputWritesComplete); }
     public virtual void RouteInputs(string[] targets,string[] expected) { AudioCore.RouteRoles(targets,1,expected); }
     public virtual SceneSignals Context(List<SmartGroup> groups,string[] roles)
     {

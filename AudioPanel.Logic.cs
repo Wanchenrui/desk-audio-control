@@ -123,11 +123,14 @@ internal sealed partial class AudioPanel
         public List<SmartGroup> Groups;
         public string[] Outputs, Inputs;
         public SceneSignals Signals;
+        public long ScanStart,ScanEnd;
     }
     Snapshot TakeSnapshot()
     {
-        var snap = new Snapshot { Groups = audio.Scan(), Outputs = audio.Outputs(), Inputs = audio.Inputs() };
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        var snap = new Snapshot { ScanStart = start, Groups = audio.Scan(), Outputs = audio.Outputs(), Inputs = audio.Inputs() };
         snap.Signals = audio.Context(snap.Groups,snap.Outputs);
+        snap.ScanEnd = System.Diagnostics.Stopwatch.GetTimestamp();
         return snap;
     }
     long NextScanAt() { return clock.ElapsedMilliseconds + (events.Registered ? 10000 : 2500); }

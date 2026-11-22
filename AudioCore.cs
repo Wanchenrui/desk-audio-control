@@ -256,7 +256,7 @@ public static class AudioCore
         return new[] { Default(flow,0), Default(flow,1), Default(flow,2) };
     }
 
-    internal static void RouteRoles(string[] targets, int flow, string[] expected)
+    internal static void RouteRoles(string[] targets, int flow, string[] expected, Action writesComplete = null)
     {
         CheckFlow(flow);
         var en = (IEnum)new MMEnumerator();
@@ -280,7 +280,7 @@ public static class AudioCore
             {
                 if (policy == null) policy = (IPolicy)new PolicyClient();
                 policy.SetDefaultEndpoint(target,role);
-            }, expected);
+            }, expected, writesComplete);
         }
         finally { Release(policy); Release(en); }
     }

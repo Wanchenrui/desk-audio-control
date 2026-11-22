@@ -5,7 +5,7 @@ internal static class RouteTransaction
 {
     internal static bool Equal(string a,string b) { return String.Equals(a,b,StringComparison.OrdinalIgnoreCase); }
 
-    public static string[] Apply(string[] targets, Func<int,string> read, Action<int,string> write, string[] expected)
+    public static string[] Apply(string[] targets, Func<int,string> read, Action<int,string> write, string[] expected, Action writesComplete = null)
     {
         if (targets == null || targets.Length != 3 || targets.Any(String.IsNullOrEmpty))
             throw new InvalidOperationException("缺少可恢复的默认端口。");
@@ -16,6 +16,7 @@ internal static class RouteTransaction
         {
             for (int role = 0; role < 3; role++)
                 if (!Equal(old[role],targets[role])) write(role,targets[role]);
+            if (writesComplete != null) writesComplete();
             for (int role = 0; role < 3; role++)
                 if (!Equal(read(role),targets[role])) throw new InvalidOperationException("Windows 未应用默认端口。");
             return old;

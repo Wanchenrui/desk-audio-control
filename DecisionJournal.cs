@@ -21,6 +21,22 @@ internal sealed class SwitchEvidence
     public int Sensitivity { get; set; }
     public int Sessions { get; set; }
 
+    public string GuardCode { get; set; }
+    public string SkipCode()
+    {
+        if (Ranked == null) return null;
+        if (Guard != null) return GuardCode ?? "guard";
+        if (Quiet) return "quiet_period";
+        if (!CanRestore) return "missing_roles";
+        var best = Winner();
+        if (best == null) return "no_candidate";
+        if (RouteTransaction.Equal(best.Id,DefaultOutput)) return PairCurrentInput ? null : "incumbent";
+        if (Ranked.Count(p => p != null && p.Score(this) == best.Score(this)) > 1) return "tie";
+        var current = Ranked.FirstOrDefault(p => p != null && RouteTransaction.Equal(p.Id,DefaultOutput));
+        int lead = best.Score(this) - (current == null ? 0 : current.Score(this));
+        return lead < 4 + (100-Sensitivity)/4 ? "margin" : null;
+    }
+
     public RouteCandidate Winner()
     {
         return Ranked.Where(p => p != null && !String.IsNullOrEmpty(p.Id))
@@ -39,17 +55,17 @@ internal sealed class SwitchEvidence
     {
         if (Ranked != null)
         {
-            if (Guard != null) return Guard;
-            if (Quiet) return "处于手动操作或切换后的 30 秒静默期";
-            if (!CanRestore) return "缺少可供撤销的默认角色";
-            var best = Winner();
-            if (best == null) return "没有符合用途和蓝牙配置要求的输出";
-            if (RouteTransaction.Equal(best.Id,DefaultOutput)) return PairCurrentInput ? null : "保留当前得分最高的输出";
-            if (Ranked.Count(p => p != null && p.Score(this) == best.Score(this)) > 1) return "候选同分，保留当前选择";
-            var current = Ranked.FirstOrDefault(p => p != null && RouteTransaction.Equal(p.Id,DefaultOutput));
-            int margin = 4 + (100 - Sensitivity) / 4;
-            if (best.Score(this) - (current == null ? 0 : current.Score(this)) < margin) return "得分优势未达到切换门槛";
-            return null;
+            switch (SkipCode())
+            {
+                case null: return null;
+                case "quiet_period": return "处于手动操作或切换后的 30 秒静默期";
+                case "missing_roles": return "缺少可供撤销的默认角色";
+                case "no_candidate": return "没有符合用途和蓝牙配置要求的输出";
+                case "incumbent": return "保留当前得分最高的输出";
+                case "tie": return "候选同分，保留当前选择";
+                case "margin": return "得分优势未达到切换门槛";
+                default: return Guard;
+            }
         }
         if (Eligible == null || Eligible.Length == 0) return "用途偏好排除了新增输出";
         if (Eligible.Length != 1) return "同时接入多个候选输出";
@@ -58,6 +74,20 @@ internal sealed class SwitchEvidence
         if (!CanRestore) return "缺少可供撤销的默认角色";
         if (InUse) return "录音或通信输出正在使用，或占用状态未知";
         return null;
+    }
+}
+
+// Cumulative milliseconds from the first notification, on the monotonic clock.
+internal sealed class RouteTiming
+{
+    public long ScanStartMs { get; set; }
+    public long ScanEndMs { get; set; }
+    public long DecisionMs { get; set; }
+    public long? WriteMs { get; set; }
+    public long? ReadbackMs { get; set; }
+    public static long Elapsed(long origin,long tick)
+    {
+        return (long)((tick-origin)*1000.0/System.Diagnostics.Stopwatch.Frequency);
     }
 }
 
@@ -71,6 +101,8 @@ internal sealed class DecisionRecord
     public string Result { get; set; }
     public string Related { get; set; }
     public string[] Before { get; set; }
+    public string ReasonCode { get; set; }
+    public RouteTiming Timing { get; set; }
     public long? LatencyMs { get; set; }
     public SwitchEvidence Evidence { get; set; }
     public string Target { get; set; }

@@ -46,6 +46,9 @@ internal static class FoundationTest
         observed.CanRestore = true;
         string[] roles = { "console", "music", "call" };
         Action<int,string> set = (i,v) => roles[i] = v;
+        bool writesObserved = false;
+        RouteTransaction.Apply((string[])roles.Clone(), i => roles[i], set, null, () => writesObserved = true);
+        Check(writesObserved,"measure completed role writes before readback");
         string[] original = RouteTransaction.Apply(new[] { "usb","usb","usb" }, i => roles[i], set, null);
         Check(original[2] == "call" && roles.All(v => v == "usb"), "record all previous roles");
         bool refused = false;

@@ -156,6 +156,11 @@ internal sealed partial class AudioPanel
                             (p.Recent ? " · 新接入" : "") + (p.Stereo ? " · 多声道" : "") + (p.RestoreStereo ? " · 避免蓝牙免提" : "") + " · 总分 " + p.Score(e);
                     if (record.InputAfter != null) replay += "\n" + record.Reason;
                 }
+                if (record.ReasonCode != null) replay += "\n原因码 " + record.ReasonCode;
+                var t = record.Timing;
+                if (t != null) replay += "\n距通知（ms） · 开始扫描 " + t.ScanStartMs + " · 完成扫描 " + t.ScanEndMs +
+                    " · 决策 " + t.DecisionMs + " · 写入 " + (t.WriteMs.HasValue ? t.WriteMs.ToString() : "—") +
+                    " · 读回 " + (t.ReadbackMs.HasValue ? t.ReadbackMs.ToString() : "—");
                 MessageBox.Show(dialog,replay,"离线回放");
             });
             add("导出…", delegate { using (var file = new SaveFileDialog { Filter = "JSON 文件|*.json", FileName = "DeskAudio-decisions.json" })
