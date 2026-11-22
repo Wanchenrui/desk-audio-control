@@ -19,7 +19,7 @@ internal sealed partial class AudioPanel
     readonly Card[] tuneCards=new Card[3];
     readonly ComboBox outputBox=new ComboBox(), inputBox=new ComboBox(), modelBox=new ComboBox();
     Caption tuningTitle,portLabel,tuneFeedback,comfortState,doctorText,modelStatus;
-    PillButton referenceButton,learnButton,forgetButton,restoreOutput,diagnoseButton,repairButton,restoreInput,listenA,listenB,exportEq,stopAudio,pickModel;
+    PillButton referenceButton,learnButton,forgetButton,restoreOutput,diagnoseButton,repairButton,restoreInput,listenA,listenB,exportEq,stopAudio,pickModel,portButton;
     ToggleSwitch enableLanding;
     TextBox filterList;
     int tuneTab;
@@ -61,6 +61,8 @@ internal sealed partial class AudioPanel
         }
         portLabel=Cap(page,"播放设备",10f,true,Tone.Ink);
         AddBox(page,outputBox,"调优播放端口"); AddBox(page,inputBox,"诊断录音端口");
+        outputBox.Visible=inputBox.Visible=false; // The boxes keep the selection; portButton is what the user sees.
+        portButton=TuneButton(page,"选择端口",ChoosePort);
         tuneFeedback=Cap(page,"",9f,false,Tone.Muted); tuneFeedback.Wrap=true;
         var landing=tuneCards[0];
         enableLanding=Switch(landing,"切换时匹配舒适音量并为耳机淡入",tuneEnabled,on=>{
@@ -119,7 +121,7 @@ internal sealed partial class AudioPanel
         if (tuneTab!=tab) CancelTuningJob();
         tuneTab=tab;
         for(int i=0;i<3;i++) { tuneCards[i].Visible=i==tab; tuningNav[i].On=i==tab; }
-        outputBox.Visible=tab!=1; inputBox.Visible=tab==1; portLabel.Text=tab==1 ? "录音设备" : "播放设备";
+        portLabel.Text=tab==1 ? "录音设备" : "播放设备";
         TuneMessage(""); RefreshTuneActions();
     }
     void LayoutTuning(Panel page)
@@ -132,6 +134,7 @@ internal sealed partial class AudioPanel
         for(int i=0;i<3;i++) tuningNav[i].SetBounds(x+i*P(145),y+P(64),P(138),P(36));
         portLabel.SetBounds(x,y+P(120),P(84),P(30));
         foreach(var box in new[]{outputBox,inputBox}) box.SetBounds(x+P(88),y+P(120),w-P(88),P(32));
+        portButton.SetBounds(x+P(88),y+P(120),w-P(88),P(32));
         foreach(var card in tuneCards) card.SetBounds(x,y+P(166),w,P(274));
         int iw=w-2*m;
         enableLanding.SetBounds(m,P(16),iw,P(36)); comfortState.SetBounds(m,P(64),iw,P(110));
@@ -203,6 +206,10 @@ internal sealed partial class AudioPanel
         restoreInput.Enabled=idle && input!=null && levels.Saved(input.Port.Id)!=null;
         listenA.Enabled=listenB.Enabled=idle && Preset!=null && output!=null;
         exportEq.Enabled=Preset!=null;
+        var shownPort=tuneTab==1 ? input : output;
+        portButton.Enabled=idle && shownPort!=null;
+        portButton.Text=shownPort==null ? (tuneTab==1 ? "没有可用的录音端口" : "没有可用的播放端口") : shownPort+" · 更换…";
+        portButton.AccessibleName=(tuneTab==1 ? "录音端口" : "播放端口")+(shownPort==null ? "，无可用端口" : "，当前 "+shownPort+"，点击更换");
         pickModel.Enabled=idle;
         pickModel.Text=Preset==null ? "选择实物型号…" : Preset.Model+" · 更换…";
         pickModel.AccessibleName=Preset==null ? "选择实物型号" : "已选型号 "+Preset.Model+"，点击更换";
@@ -268,6 +275,14 @@ internal sealed partial class AudioPanel
         } catch (OperationCanceledException) { if (!IsDisposed) TuneMessage("已停止"); }
         catch (Exception e) { if (!IsDisposed) TuneMessage("未完成 · "+e.Message,true); }
         finally { tuningJob=null; job.Dispose(); if (!IsDisposed) { quietUntil=clock.ElapsedMilliseconds+30000; RefreshTuneActions(); } }
+    }
+    void ChoosePort()
+    {
+        var box=tuneTab==1 ? inputBox : outputBox;
+        var items=box.Items.Cast<TuneEndpoint>().ToList();
+        if (items.Count==0) return;
+        // The hidden box keeps the selection, so its change handlers still cancel jobs and refresh the page.
+        ThemedMenu.Choose(portButton,items.Select(p=>p.ToString()).ToList(),box.SelectedIndex,n=>box.SelectedIndex=n);
     }
     void ChooseModel()
     {
