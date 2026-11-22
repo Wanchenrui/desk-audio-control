@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 public sealed class AudioItem
 {
     public string Id, Name, Bus;
-    public int Flow, State, Channels;
+    public int Flow, State, Channels, MixRate;
     public bool HandsFreeProfile;
     internal bool ParentPresent;
     internal bool? JackConnected, LinkConnected;
@@ -156,13 +156,16 @@ public static class AudioCore
         try
         {
             string name = ReadText(store, FriendlyName);
+            int rate;
+            int channels=ReadFormat(store,out rate);
             return new AudioItem { Id = id, Name = String.IsNullOrEmpty(name) ? id : name,
-                Bus = ReadText(store, InterfaceName), Flow = flow, State = (int)state, Channels = ReadChannels(store) };
+                Bus = ReadText(store, InterfaceName), Flow = flow, State = (int)state, Channels = channels, MixRate=rate };
         }
         finally { Release(store); }
     }
-    static int ReadChannels(IStore store)
+    static int ReadFormat(IStore store,out int rate)
     {
+        rate=0;
         Key key = DeviceFormat;
         Variant value;
         try { store.GetValue(ref key,out value); }
@@ -170,8 +173,9 @@ public static class AudioCore
         try
         {
             // VT_BLOB contains a DWORD byte length and an aligned pointer to WAVEFORMATEX.
-            return value.Vt == 65 && (uint)value.Value.ToInt64() >= 16 && value.Extra != IntPtr.Zero ?
-                (ushort)Marshal.ReadInt16(value.Extra,2) : 0;
+            if (value.Vt!=65 || (uint)value.Value.ToInt64()<16 || value.Extra==IntPtr.Zero) return 0;
+            rate=Marshal.ReadInt32(value.Extra,4);
+            return (ushort)Marshal.ReadInt16(value.Extra,2);
         }
         finally { PropVariantClear(ref value); }
     }

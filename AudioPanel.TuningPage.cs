@@ -22,6 +22,14 @@ internal sealed partial class AudioPanel
     PillButton referenceButton,learnButton,forgetButton,restoreOutput,diagnoseButton,repairButton,restoreInput,listenA,listenB,exportEq,stopAudio,pickModel,portButton;
     ToggleSwitch enableLanding;
     EqTable filterList;
+    FlatSlider strength,phoneCap;
+    Caption strengthLabel,capLabel,apoStatus;
+    PillButton applyEq,restoreEq;
+    EqPlan eqPlan;
+    EqPreset plannedPreset;
+    EqCandidate[] suggested=new EqCandidate[0];
+    string eqMatchReason,apoApplied,apoError;
+    ApoBridge apo;
     int tuneTab;
     Panel tunePage;
     bool filling;
@@ -83,6 +91,12 @@ internal sealed partial class AudioPanel
         forgetButton=TuneButton(landing,"清除舒适记录",delegate {
             levels.Forget(TuneOut.Group.Key); learnPort=null; TuneMessage("已清除该设备的舒适记录");
         });
+        phoneCap=new FlatSlider { Minimum=1,Maximum=60,AccessibleName="耳机音量上限" };
+        landing.Controls.Add(phoneCap); capLabel=Cap(landing,"",9f,false,Tone.Muted);
+        phoneCap.ValueChanged+=delegate { if (TuneOut!=null) {
+            LocalSettings.Put("HeadphoneCeiling/"+TuneOut.Group.Key,phoneCap.Value.ToString());
+            capLabel.Text="耳机上限 "+phoneCap.Value+"%";
+        } };
         restoreOutput=TuneButton(landing,"还原上次音量",()=>RestoreTuned(TuneOut));
 
         var mic=tuneCards[1];
@@ -101,8 +115,8 @@ internal sealed partial class AudioPanel
             if (filling) return;
             CancelTuningJob();
             try {
-                if (TuneOut!=null) LocalSettings.Put("EqModel/"+TuneOut.Group.Key,Preset==null ? null : Preset.Model);
-                if (Preset==null) MatchPreset();
+                if (TuneOut!=null) LocalSettings.Put("EqModel/"+TuneOut.Group.Key+"/"+TuneOut.Port.Id,Preset==null ? "-" : Preset.Model);
+                eqMatchReason="手动选择";
             } catch (Exception error) { TuneMessage(error.Message,true); }
             RefreshTuneActions();
         };
@@ -111,14 +125,25 @@ internal sealed partial class AudioPanel
         listenA=TuneButton(eq,"试听 A · 原声",()=>StartTuningJob(false,false));
         listenB=TuneButton(eq,"试听 B · EQ",()=>StartTuningJob(false,true));
         exportEq=TuneButton(eq,"导出参数…",ExportPreset);
+        strength=new FlatSlider { AccessibleName="EQ 强度" }; eq.Controls.Add(strength);
+        strengthLabel=Cap(eq,"",9f,true,Tone.Ink);
+        strength.ValueChanged+=delegate {
+            if (TuneOut==null) return;
+            LocalSettings.Put("EqStrength/"+TuneOut.Group.Key,strength.Value.ToString());
+            RefreshTuneActions();
+        };
+        apoStatus=Cap(eq,"",9f,false,Tone.Muted); apoStatus.Wrap=true;
+        applyEq=TuneButton(eq,"应用到此端口",()=>ChangeEq(true));
+        restoreEq=TuneButton(eq,"还原 EQ",()=>ChangeEq(false));
         stopAudio=TuneButton(page,"停止",CancelTuningJob);
-        outputBox.SelectedIndexChanged+=delegate { if (!filling) { CancelTuningJob(); MatchPreset(); RefreshTuneActions(); } };
+        outputBox.SelectedIndexChanged+=delegate { if (!filling) { CancelTuningJob(); MatchPreset(); ReadApoStatus(); RefreshTuneActions(); } };
         inputBox.SelectedIndexChanged+=delegate { if (!filling) { CancelTuningJob(); diagnosis=null; RefreshTuneActions(); } };
         SelectTuneTab(0);
     }
     void SelectTuneTab(int tab)
     {
         if (tuneTab!=tab) CancelTuningJob();
+        if (tab==2) ReadApoStatus();
         tuneTab=tab; if (tunePage!=null) LayoutTuning(tunePage);
         for(int i=0;i<3;i++) { tuneCards[i].Visible=i==tab; tuningNav[i].On=i==tab; }
         portLabel.Text=tab==1 ? "录音设备" : "播放设备";
@@ -135,7 +160,7 @@ internal sealed partial class AudioPanel
         portLabel.SetBounds(x,y+P(120),P(84),P(30));
         foreach(var box in new[]{outputBox,inputBox}) box.SetBounds(x+P(88),y+P(120),w-P(88),P(32));
         portButton.SetBounds(x+P(88),y+P(120),w-P(88),P(32));
-        int tableH=filterList.Wanted(10), eqH=P(84)+tableH+P(12)+P(36)+P(18);
+        int tableH=filterList.Wanted(10), eqH=P(130)+tableH+P(160);
         for(int i=0;i<3;i++) tuneCards[i].SetBounds(x,y+P(166),w,i==2 ? eqH : P(274));
         int iw=w-2*m;
         enableLanding.SetBounds(m,P(16),iw,P(36)); comfortState.SetBounds(m,P(64),iw,P(110));
@@ -146,8 +171,12 @@ internal sealed partial class AudioPanel
         diagnoseButton.SetBounds(m,P(207),P(140),P(36)); repairButton.SetBounds(m+P(150),P(207),P(164),P(36));
         restoreInput.SetBounds(m+P(324),P(207),P(136),P(36));
         modelStatus.SetBounds(m,P(6),iw,P(40)); pickModel.SetBounds(m,P(48),iw,P(32));
-        filterList.SetBounds(m,P(84),iw,tableH);
-        int by=P(84)+tableH+P(12);
+        strengthLabel.SetBounds(m,P(84),P(104),P(34)); strength.SetBounds(m+P(110),P(84),iw-P(110),P(34));
+        capLabel.SetBounds(m,P(156),P(120),P(32)); phoneCap.SetBounds(m+P(126),P(156),iw-P(126),P(32));
+        filterList.SetBounds(m,P(130),iw,tableH);
+        int by=P(130)+tableH+P(8);
+        apoStatus.SetBounds(m,by+P(40),iw,P(44));
+        applyEq.SetBounds(m,by+P(90),P(150),P(36)); restoreEq.SetBounds(m+P(156),by+P(90),P(120),P(36));
         listenA.SetBounds(m,by,P(132),P(36)); listenB.SetBounds(m+P(142),by,P(132),P(36));
         exportEq.SetBounds(m+P(284),by,P(132),P(36));
         int below=y+P(166)+(tuneTab==2 ? eqH : P(274))+P(7);
@@ -164,6 +193,7 @@ internal sealed partial class AudioPanel
             if (!SameEndpoint(priorOut,TuneOut)) { CancelTuningJob(); MatchPreset(); }
             if (!SameEndpoint(priorIn,TuneIn)) { CancelTuningJob(); diagnosis=null; }
         } finally { filling=false; }
+        if (tuneTab==2) ReadApoStatus();
         RefreshTuneActions();
     }
     static bool SameEndpoint(TuneEndpoint a,TuneEndpoint b)
@@ -174,7 +204,7 @@ internal sealed partial class AudioPanel
     {
         var entries=groups.Where(g=>!g.Virtual).SelectMany(g=>(flow==0 ? g.Outputs : g.Inputs)
             .Select(p=>new TuneEndpoint { Group=g,Port=p })).ToArray();
-        if (entries.Select(p=>p.Port.Id+p.Group.Key+p.ToString()).SequenceEqual(box.Items.Cast<TuneEndpoint>().Select(p=>p.Port.Id+p.Group.Key+p.ToString()))) return;
+        if (entries.Select(p=>p.Port.Id+p.Group.Key+p.Port.MixRate+p.ToString()).SequenceEqual(box.Items.Cast<TuneEndpoint>().Select(p=>p.Port.Id+p.Group.Key+p.Port.MixRate+p.ToString()))) return;
         var old=box.SelectedItem as TuneEndpoint;
         box.Items.Clear(); box.Items.AddRange(entries);
         box.SelectedItem=entries.FirstOrDefault(p=>SameEndpoint(p,old)) ?? entries.FirstOrDefault(p=>Same(p.Port.Id,current)) ?? entries.FirstOrDefault();
@@ -182,8 +212,17 @@ internal sealed partial class AudioPanel
     void MatchPreset()
     {
         var p=TuneOut;
-        var saved=p==null ? null : LocalSettings.Get("EqModel/"+p.Group.Key);
-        var match=presets.FirstOrDefault(eq=>eq.Model==saved) ?? (p==null ? null : EqPreset.Match(presets,p.Group.Name,p.Port.Name,p.Port.Bus));
+        var saved=p==null ? null : LocalSettings.Get("EqModel/"+p.Group.Key+"/"+p.Port.Id);
+        var legacy=p==null ? null : LocalSettings.Get("EqModel/"+p.Group.Key);
+        suggested=p==null ? new EqCandidate[0] : EqMatcher.Rank(presets,p.Group.Name,p.Port.Name,p.Port.Bus);
+        var match=saved==null ? EqMatcher.Unique(suggested) : presets.FirstOrDefault(eq=>eq.Model==saved);
+        eqMatchReason=saved==null && match!=null ? suggested[0].Reason : "该端口已选型号";
+        if (saved==null && match==null && legacy!=null) {
+            // A pre-v1.5 choice identified the DAC, not necessarily the current headphone.
+            var oldModel=presets.FirstOrDefault(eq=>eq.Model==legacy);
+            if (oldModel!=null) suggested=new[]{new EqCandidate { Preset=oldModel,Reason="旧设备记录，请确认" }}.Concat(suggested).ToArray();
+        }
+        if (strength!=null) strength.Set(p==null ? 100 : ReadNumber("EqStrength/"+p.Group.Key,100,0,100));
         bool old=filling; filling=true;
         try { modelBox.SelectedIndex=match==null ? 0 : Array.IndexOf(presets,match)+1; }
         finally { filling=old; }
@@ -207,8 +246,22 @@ internal sealed partial class AudioPanel
         repairButton.Enabled=idle && input!=null && diagnosis!=null && diagnosedPort==input.Port.Id && diagnosis.GainDb!=0;
         repairButton.Text=repairButton.Enabled ? "输入音量 "+diagnosis.GainDb.ToString("+0.#;-0.#")+" dB" : "调整输入音量";
         restoreInput.Enabled=idle && input!=null && levels.Saved(input.Port.Id)!=null;
-        listenA.Enabled=listenB.Enabled=idle && Preset!=null && output!=null;
-        exportEq.Enabled=Preset!=null;
+        phoneCap.Enabled=output!=null && idle;
+        phoneCap.Set(output==null ? 60 : ReadNumber("HeadphoneCeiling/"+output.Group.Key,60,1,60));
+        capLabel.Text="耳机上限 "+phoneCap.Value+"%";
+        int rate=output==null || output.Port.MixRate<=0 ? EqPreset.Rate : output.Port.MixRate;
+        bool supported=Preset!=null && EqPlanner.Supported(Preset,rate);
+        if (!supported) eqPlan=null;
+        else if (Preset!=plannedPreset || eqPlan==null || eqPlan.Strength!=strength.Value || eqPlan.Rate!=rate)
+            eqPlan=EqPlanner.Plan(Preset,strength.Value,rate);
+        plannedPreset=Preset;
+        strength.Enabled=idle && supported; strengthLabel.Text="强度 "+strength.Value+"%";
+        listenA.Enabled=listenB.Enabled=idle && eqPlan!=null && output!=null && apoApplied==null && apoError==null;
+        exportEq.Enabled=eqPlan!=null;
+        applyEq.Enabled=idle && eqPlan!=null && apo!=null && apoError==null && output!=null && output.Port.MixRate>0;
+        restoreEq.Enabled=idle && apo!=null && apoError==null && apoApplied!=null;
+        apoStatus.Text=apoError ?? (apo==null ? "未找到 Equalizer APO，可试听或导出。" :
+            (apoApplied==null ? "尚未应用。" : "已写入配置 · "+apoApplied+"。")+" 端口需在 APO 中注册，独占播放会绕过系统效果。");
         var shownPort=tuneTab==1 ? input : output;
         portButton.Enabled=idle && shownPort!=null;
         portButton.Text=shownPort==null ? (tuneTab==1 ? "没有检测到录音设备" : "没有检测到播放设备") : shownPort+" · 更换…";
@@ -216,9 +269,29 @@ internal sealed partial class AudioPanel
         pickModel.Enabled=idle;
         pickModel.Text=Preset==null ? "选择实物型号…" : Preset.Model+" · 更换…";
         pickModel.AccessibleName=Preset==null ? "选择实物型号" : "已选型号 "+Preset.Model+"，点击更换";
-        filterList.Bind(Preset);
-        modelStatus.Text=Preset==null ? "未匹配到测量数据。可从列表选择实物型号。" :
-            "oratory1990 测量 · AutoEq 参数　|　A/B 在所选端口播放 2 秒测试音";
+        filterList.Bind(eqPlan==null ? null : eqPlan.Filter);
+        modelStatus.Text=Preset==null ? (suggested.Length==0 ? "请选择实物型号。" : "请确认型号 · "+suggested[0].Preset.Model+" · "+suggested[0].Reason) :
+            eqPlan==null ? "当前端口采样率不足以应用该预设" : eqMatchReason+" · "+rate+" Hz · 预设频响余量 "+eqPlan.HeadroomDb.ToString("F1")+" dB";
+    }
+    void ReadApoStatus()
+    {
+        apoApplied=null; apoError=null;
+        try {
+            apo=ApoBridge.Detect();
+            if (apo!=null && TuneOut!=null) apoApplied=apo.Applied(TuneOut.Port.Id);
+        } catch (Exception error) { apoError=error.Message; }
+    }
+    void ChangeEq(bool apply)
+    {
+        var output=TuneOut;
+        if (output==null || apo==null || (apply && eqPlan==null)) return;
+        try {
+            apo.Change(output.Port.Id,apply ? eqPlan : null,RequireTuningIdle);
+            string result=apply ? eqPlan.Filter.Model+" · "+eqPlan.Strength+"%" : null;
+            LocalSettings.Put("EqApplied/"+output.Port.Id,result);
+            Activity("EQ",output.Group.Name,apply ? "已写入端口配置 · "+result : "已还原端口配置","tuned");
+            TuneMessage(apply ? "已将预设写入 Equalizer APO" : "已还原 EQ 配置");
+        } finally { ReadApoStatus(); }
     }
     void RestoreTuned(TuneEndpoint port)
     {
@@ -267,7 +340,7 @@ internal sealed partial class AudioPanel
                 job.Token.ThrowIfCancellationRequested();
                 diagnosedPort=id; diagnosis=report; TuneMessage("检查完成");
             } else {
-                var preset=Preset;
+                var preset=eqPlan==null ? null : eqPlan.Filter;
                 bool reference=tuneTab==0;
                 if (!reference && preset==null) throw new InvalidOperationException("请先选择测量预设");
                 TuneMessage(reference ? "正在播放 2 秒参考音" : filtered ? "正在试听 B · 推荐 EQ" : "正在试听 A · 原声");
@@ -288,17 +361,20 @@ internal sealed partial class AudioPanel
     }
     void ChooseModel()
     {
-        using (var picker=new ModelPicker(presets,Preset)) {
+        var candidates=suggested.Select(c=>c.Preset).Distinct().ToArray();
+        var ordered=candidates.Concat(presets.Except(candidates)).ToArray();
+        using (var picker=new ModelPicker(ordered,Preset)) {
             if (picker.ShowDialog(this)!=DialogResult.OK) return;
             CancelTuningJob();
             // The hidden box still owns the selection, so saving and matching run through its handler.
+            if (TuneOut!=null) LocalSettings.Put("EqModel/"+TuneOut.Group.Key+"/"+TuneOut.Port.Id,picker.Cleared ? "-" : picker.Picked.Model);
             modelBox.SelectedIndex=picker.Cleared || picker.Picked==null ? 0 : Array.IndexOf(presets,picker.Picked)+1;
         }
     }
     void ExportPreset()
     {
-        if (Preset==null) return;
+        if (eqPlan==null) return;
         using (var dialog=new SaveFileDialog { Filter="Equalizer APO 参数|*.txt",FileName=Preset.Model+" ParametricEQ.txt" })
-            if (dialog.ShowDialog(this)==DialogResult.OK) { File.WriteAllText(dialog.FileName,Preset.Export()); TuneMessage("已导出预设，可在外部均衡器中加载"); }
+            if (dialog.ShowDialog(this)==DialogResult.OK) { File.WriteAllText(dialog.FileName,eqPlan.Filter.Export()); TuneMessage("已导出预设，可在外部均衡器中加载"); }
     }
 }

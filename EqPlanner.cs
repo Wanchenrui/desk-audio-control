@@ -9,6 +9,7 @@ internal sealed class EqPlan
 }
 internal static class EqPlanner
 {
+    internal static bool Supported(EqPreset source,int rate) { return rate>=8000 && source.Rows.All(r=>r.Hz<rate*.5); }
     internal static EqPlan Plan(EqPreset source,int strength,int rate)
     {
         if (strength<0 || strength>100 || rate<8000 || source.Rows.Any(r=>r.Hz>=rate*.5))

@@ -77,6 +77,7 @@ internal static class TuningTest
         Check(hd.Export().Contains("Preamp:") && hd.Export().Contains("Filter 1:"),"Equalizer APO export");
         Check(EqPreset.Match(catalog,"LE_Sennheiser HD 600 Stereo")==hd,"transport prefix");
         Check(EqMatcher.Unique(EqMatcher.Rank(catalog,"Sennheiser HD 600 special edition"))==null,"unlisted variant requires confirmation");
+        Check(EqPlanner.Supported(hd,48000) && !EqPlanner.Supported(hd,8000),"endpoint Nyquist limit");
         var flat=EqPlanner.Plan(hd,0,48000);
         Check(flat.Filter.Preamp==0 && flat.Filter.Rows.All(r=>r.Gain==0),"zero strength is flat");
         var half=EqPlanner.Plan(hd,50,48000);
