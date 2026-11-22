@@ -3,6 +3,8 @@ $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $sources = @(
+    (Join-Path $project 'EqPlanner.cs')
+    (Join-Path $project 'EqMatcher.cs')
     (Join-Path $project 'MicAdvisor.cs')
     (Join-Path $project 'MicSpectrum.cs')
     (Join-Path $project 'LevelPlanner.cs')
@@ -31,7 +33,7 @@ $tempExe = Join-Path ([IO.Path]::GetTempPath()) $tempName
 try {
     foreach ($suite in 'DiscoveryTest', 'PresenceTest', 'SmartPolicyTest', 'EndpointCacheTest', 'ScanGateTest', 'FoundationTest', 'SceneSwitchTest', 'TuningTest') {
         $testSource = Join-Path $PSScriptRoot ($suite + '.cs')
-        & $compiler /nologo /target:exe /platform:x64 /codepage:65001 /r:System.Web.Extensions.dll "/resource:$project\eq\presets.txt,DeskAudio.EQ.txt" "/resource:$project\eq\AutoEq-LICENSE.txt,DeskAudio.EQ.License" "/out:$tempExe" @sources $testSource
+        & $compiler /nologo /target:exe /platform:x64 /codepage:65001 /r:System.Web.Extensions.dll "/resource:$project\eq\presets.txt,DeskAudio.EQ.txt" "/resource:$project\eq\name-aliases.txt,DeskAudio.EQ.Aliases" "/resource:$project\eq\AutoEq-LICENSE.txt,DeskAudio.EQ.License" "/out:$tempExe" @sources $testSource
         if ($LASTEXITCODE -ne 0) { throw "Could not compile $suite." }
 
         & $tempExe

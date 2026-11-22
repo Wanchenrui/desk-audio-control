@@ -1,0 +1,18 @@
+# Device label decorations. One literal phrase per line.
+headphones
+headphone
+headset
+speakers
+speaker
+stereo
+bluetooth
+audio
+LE
+LE Audio
+USB
+wireless stereo
+耳机
+耳麦
+扬声器
+立体声
+蓝牙

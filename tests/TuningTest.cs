@@ -75,6 +75,12 @@ internal static class TuningTest
         Check(EqPreset.Match(catalog,"HD 6000 USB")==null,"model number boundary");
         Check(EqPreset.Match(catalog,"USB DAC")==null,"unknown stays unmatched");
         Check(hd.Export().Contains("Preamp:") && hd.Export().Contains("Filter 1:"),"Equalizer APO export");
+        Check(EqPreset.Match(catalog,"LE_Sennheiser HD 600 Stereo")==hd,"transport prefix");
+        Check(EqMatcher.Unique(EqMatcher.Rank(catalog,"Sennheiser HD 600 special edition"))==null,"unlisted variant requires confirmation");
+        var flat=EqPlanner.Plan(hd,0,48000);
+        Check(flat.Filter.Preamp==0 && flat.Filter.Rows.All(r=>r.Gain==0),"zero strength is flat");
+        var half=EqPlanner.Plan(hd,50,48000);
+        Check(half.HeadroomDb>=0 && Math.Abs(half.Filter.Rows[0].Gain-hd.Rows[0].Gain/2)<.001,"scaled filters retain headroom");
         var a=hd.Preview(false); var b=hd.Preview(true);
         Check(a.Length==b.Length && !a.SequenceEqual(b),"A/B uses actual filter");
         Check(a.SequenceEqual(EqPreset.Reference()),"comfort reference is the flat A sample");

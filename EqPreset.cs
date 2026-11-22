@@ -27,7 +27,7 @@ internal sealed class EqPreset
         public readonly double Hz,Gain,Q;
         public EqRow(string type,double hz,double gain,double q) { Type=type; Hz=hz; Gain=gain; Q=q; }
     }
-    static string Resource(string name)
+    internal static string Resource(string name)
     {
         using (var file=typeof(EqPreset).Assembly.GetManifestResourceStream(name))
         using (var reader=new StreamReader(file,Encoding.UTF8)) return reader.ReadToEnd().Replace("\r","");
@@ -51,17 +51,22 @@ internal sealed class EqPreset
         return list.ToArray();
     }
     static double Number(string value) { return Double.Parse(value,CultureInfo.InvariantCulture); }
-    static string Normalize(string value)
-    {
-        string clean=Regex.Replace(value??"",@"\b(headphones?|headset|speakers?|stereo|bluetooth)\b|耳机|扬声器|立体声","",RegexOptions.IgnoreCase);
-        return Regex.Replace(clean.ToLowerInvariant(),"[^a-z0-9]","");
-    }
     internal static EqPreset Match(IEnumerable<EqPreset> catalog,params string[] names)
     {
-        var keys=new HashSet<string>(names.Select(Normalize));
-        var matches=catalog.Where(p=>keys.Contains(Normalize(p.Model)) ||
-            keys.Contains(Normalize(p.Model.Substring(p.Model.IndexOf(' ')+1)))).ToArray();
-        return matches.Length==1 ? matches[0] : null;
+        return EqMatcher.Unique(EqMatcher.Rank(catalog,names));
+    }
+    internal EqPreset WithParameters(IEnumerable<EqRow> filters,double gain)
+    {
+        var next=new EqPreset { Model=Model,Category=Category,preamp=gain };
+        var lines=new List<string> { String.Format(CultureInfo.InvariantCulture,"Preamp: {0:0.###} dB",gain) };
+        foreach (var row in filters) {
+            next.rows.Add(row);
+            next.bands.Add(new Band(row.Type,row.Hz,row.Gain,row.Q));
+            lines.Add(String.Format(CultureInfo.InvariantCulture,"Filter {0}: ON {1} Fc {2} Hz Gain {3:0.###} dB Q {4}",
+                next.rows.Count,row.Type,row.Hz,row.Gain,row.Q));
+        }
+        next.parameters=String.Join("\n",lines);
+        return next;
     }
     public string Parameters { get { return parameters.Replace("\n",Environment.NewLine); } }
     public string Export()
@@ -71,12 +76,12 @@ internal sealed class EqPreset
     }
 
     // RBJ peaking and Q-based shelving filters used for the local A/B sample.
-    sealed class Band
+    internal sealed class Band
     {
         readonly double b0,b1,b2,a1,a2;
-        public Band(string type,double hz,double gain,double q)
+        public Band(string type,double hz,double gain,double q,int sampleRate=Rate)
         {
-            double w=2*Math.PI*hz/Rate, c=Math.Cos(w), a=Math.Pow(10,gain/40), alpha=Math.Sin(w)/(2*q), d;
+            double w=2*Math.PI*hz/sampleRate, c=Math.Cos(w), a=Math.Pow(10,gain/40), alpha=Math.Sin(w)/(2*q), d;
             if (type=="PK") {
                 d=1+alpha/a; b0=(1+alpha*a)/d; b1=-2*c/d; b2=(1-alpha*a)/d; a1=b1; a2=(1-alpha/a)/d;
             } else {
@@ -85,6 +90,13 @@ internal sealed class EqPreset
                 d=p+s*m*c+t; b0=a*(p-s*m*c+t)/d; b1=2*s*a*(m-s*p*c)/d;
                 b2=a*(p-s*m*c-t)/d; a1=-2*s*(m+s*p*c)/d; a2=(p+s*m*c-t)/d;
             }
+        }
+        public double ResponseDb(double cosine,double cos2)
+        {
+            // |b0+b1*z^-1+b2*z^-2|² / |1+a1*z^-1+a2*z^-2|².
+            double num=b0*b0+b1*b1+b2*b2+2*(b0*b1+b1*b2)*cosine+2*b0*b2*cos2;
+            double den=1+a1*a1+a2*a2+2*(a1+a1*a2)*cosine+2*a2*cos2;
+            return 10*Math.Log10(Math.Max(1e-24,num)/Math.Max(1e-24,den));
         }
         public void Filter(double[] samples)
         {
