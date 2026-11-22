@@ -25,6 +25,13 @@ internal static class TuningTest
         Check(Landing.FromDb(-24,anchors)==30,"interpolate native gain between measured endpoint levels");
         Check(Landing.FromDb(-60,anchors)==20 && Landing.FromDb(8,anchors)==100,"clamp gain outside known range");
         Check(LevelPlanner.Curve(new[]{new GainPoint(0,-60),new GainPoint(40,0),new GainPoint(100,-5)})==null,"reversed driver curve");
+        var noon=new DateTime(2026,1,5,12,0,0,DateTimeKind.Utc);
+        var day=new[]{30,30,32,97}.Select(v=>new ComfortSample { Level=v,Db=v-100,Night=false,Utc=noon }).ToArray();
+        var night=Enumerable.Repeat(new ComfortSample { Level=8,Db=-92,Night=true,Utc=noon },5);
+        var native=new[]{new GainPoint(0,-100),new GainPoint(50,-50),new GainPoint(100,0)};
+        var byDay=LevelPlanner.Plan(30,80,native,native,day,day.Concat(night).ToArray(),true,false,noon);
+        Check(byDay.Target==30 && byDay.Ceiling<=32,"reject outlier and separate night history");
+        Check(byDay.Steps.Zip(byDay.Steps.Skip(1),(x,y)=>x<=y).All(v=>v),"monotonic dB fade");
         var none=new ComfortSample[0];
         var start=LevelPlanner.Plan(82,18,anchors,anchors,none,none,true,true,DateTime.UtcNow);
         Check(start.Target<=18 && start.Steps.Last()==start.Target,"cold-start ramp is bounded");
@@ -69,6 +76,17 @@ internal static class TuningTest
         Check(MicAdvisor.Adjustment(silent)==0,"never amplify a silent input");
         Check(MicAdvisor.Target(Analyze(.002,1.6,0,false),60,new GainPoint[0])<60,"clipping without a driver curve reduces gain");
 
+        var middle=AnalyzeFrames((n,t)=>n==53 ? 1.4*Math.Sin(2*Math.PI*400*t) : 0);
+        Check(middle.Clipping && middle.GainDb<0,"isolated mid-speech clipping survives VAD");
+        var dirty=AnalyzeFrames((n,t)=>(n>=10 && n<22 || n>=30 ? .2 : .001)*Math.Sin(2*Math.PI*400*t));
+        Check(dirty.QuietContaminated && !dirty.Noisy && dirty.GainDb==0,"quiet speech prompts retry");
+        var harmonic=AnalyzeFrames((n,t)=>n<30 ? .03*Math.Sin(2*Math.PI*60*t)+.05*Math.Sin(2*Math.PI*120*t) :
+            .2*Math.Sin(2*Math.PI*400*t));
+        Check(harmonic.HumHz==60,"identify harmonic-rich mains hum");
+        Check(AnalyzeFrames((n,t)=>.08*Math.Sin(2*Math.PI*35*t)).Rumble,"low-frequency rumble");
+        Check(AnalyzeFrames((n,t)=>.08*Math.Sin(2*Math.PI*9000*t)).Hiss,"high-frequency noise");
+        Check(AnalyzeFrames((n,t)=>n<30 ? 0 : .08*Math.Sin(2*Math.PI*400*t)+.05*Math.Sin(2*Math.PI*2200*t)).NarrowBand,
+            "voice band with absent upper frequencies");
         var catalog=EqPreset.Load();
         var hd=EqPreset.Match(catalog,"耳机 (Sennheiser HD 600 Stereo)");
         Check(hd!=null && hd.Model=="Sennheiser HD 600","measured model match");
@@ -110,6 +128,20 @@ internal static class TuningTest
         Check(a.Max(v=>Math.Abs((int)v))<4000 && b.Max(v=>Math.Abs((int)v))<4000,"bounded audition");
         Check(catalog.All(p=>p.Rows.Count>=10 && p.Rows.All(r=>r.Hz>0 && r.Q>0 && (r.Type=="PK" || r.Type=="LSC" || r.Type=="HSC"))),"filter rows are exposed for display");
         Console.WriteLine(count+" P3 tuning checks passed.");
+    }
+
+    static MicReport AnalyzeFrames(Func<int,double,double> signal)
+    {
+        var analysis=new MicAnalysis();
+        for (int n=0;n<MicAnalysis.TotalBlocks;n++) {
+            var frame=new short[MicAnalysis.Block];
+            for (int i=0;i<frame.Length;i++) {
+                double x=signal(n,(n*frame.Length+i)/(double)MicAnalysis.Rate);
+                frame[i]=(short)(Math.Max(-1,Math.Min(1,x))*32767);
+            }
+            analysis.Add(frame,0);
+        }
+        return analysis.Finish();
     }
 
     static MicReport Analyze(double quiet,double voice,int hum,bool echo)

@@ -5,4 +5,4 @@ using System.Reflection;
 [assembly: AssemblyDescription("Windows 音频设备识别与快捷切换")]
 [assembly: AssemblyVersion("1.5.0.0")]
 [assembly: AssemblyFileVersion("1.5.0.0")]
-[assembly: AssemblyInformationalVersion("1.5.0")]
+[assembly: AssemblyInformationalVersion("1.5.0+algorithm-preview")]

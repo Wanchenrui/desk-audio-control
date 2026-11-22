@@ -22,7 +22,7 @@ internal sealed class MicReport
         if (Silent) lines.Add("几乎无输入。请检查静音、端口和连接后重测。");
         else if (NoSpeech) lines.Add("说话段未检测到足够语音，请重新检查。");
         else if (Low) lines.Add("说话电平偏低。靠近话筒或提高输入音量后重测。");
-        if (Clipping) lines.Add("检测到削波。请降低输入音量。");
+        if (Clipping) lines.Add("多次采样触及数字满幅，削波风险高。请降低输入音量。");
         if (QuietContaminated) lines.Add("安静段混入了疑似语音，请保持安静后重测。");
         if (Rumble && HumHz==0) lines.Add("安静段以低频隆隆声为主，请检查桌面振动或风声。");
         if (Hiss) lines.Add("安静段有持续高频嘶声。");

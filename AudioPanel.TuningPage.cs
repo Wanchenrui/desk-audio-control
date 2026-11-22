@@ -270,7 +270,7 @@ internal sealed partial class AudioPanel
             (apoApplied==null || (matches && dryBands!=null && dryEndpoint==output.Port.Id));
         measureEq.Text=apoApplied==null ? "测量应用前" : "测量应用后";
         apoStatus.Text=apoError ?? (apo==null ? "未找到 Equalizer APO，可试听或导出。" :
-            (apoApplied==null ? "尚未应用。" : "已写入配置 · "+apoApplied+"。")+" 端口需在 APO 中注册，独占播放会绕过系统效果。");
+            (apoApplied==null ? "尚未应用。" : "已写入配置 · "+apoApplied+"。")+" 更换耳机请确认型号。端口需在 APO 中注册，独占播放会绕过系统效果。");
         var shownPort=tuneTab==1 ? input : output;
         portButton.Enabled=idle && shownPort!=null;
         portButton.Text=shownPort==null ? (tuneTab==1 ? "没有检测到录音设备" : "没有检测到播放设备") : shownPort+" · 更换…";
