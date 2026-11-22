@@ -30,23 +30,16 @@ internal static class SceneContext
         return false;
     }
 
-    static string Category(uint pid)
+    static readonly SceneApplications applications=new SceneApplications(
+        System.IO.Path.Combine(AppConfig.Folder,"scene-apps.json"));
+
+    static string Category(uint pid,IDictionary<string,string> apps,out bool knownMedia)
     {
-        if (pid == 0) return null;
-        try
-        {
-            using (var p = Process.GetProcessById((int)pid))
-                switch (p.ProcessName.ToLowerInvariant())
-                {
-                    case "teams": case "ms-teams": case "zoom": case "wemeetapp": case "webex": case "skype": return "会议";
-                    case "spotify": case "foobar2000": case "cloudmusic": case "qqmusic": case "musicbee": return "音乐";
-                    case "vlc": case "mpv": case "mpc-hc64": case "potplayermini64": return "影音";
-                    case "cs2": case "dota2": case "valorant-win64-shipping": case "minecraft.windows": case "league of legends": return "游戏";
-                    case "code": case "devenv": case "winword": case "onenote": case "obsidian": return "专注";
-                    case "obs64": case "audacity": case "reaper": case "soundrecorder": return "录制";
-                    case "lockapp": case "logonui": return "离开";
-                    default: return null;
-                }
+        knownMedia=false;
+        if (pid==0) return null;
+        try {
+            using (var process=Process.GetProcessById((int)pid))
+                return SceneApplications.Category(process.ProcessName,apps,out knownMedia);
         }
         catch (ArgumentException) { return null; }
         catch (InvalidOperationException) { return null; }
@@ -84,7 +77,9 @@ internal static class SceneContext
         GetClassName(window,windowClass,windowClass.Capacity);
         result.ControlForeground = pid == GetCurrentProcessId() || windowClass.ToString() == "Shell_TrayWnd" ||
             windowClass.ToString() == "NotifyIconOverflowWindow";
-        result.Foreground = Category(pid);
+        var apps=applications.Read();
+        bool foregroundMedia;
+        result.Foreground=Category(pid,apps,out foregroundMedia);
         using (var camera = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam"))
             result.Camera = CameraInUse(camera);
         var input = new LastInput { Size = (uint)Marshal.SizeOf(typeof(LastInput)) };
@@ -108,12 +103,13 @@ internal static class SceneContext
                 if (ignoreOwnStreams && sessionPid==self) return;
                 result.Sessions++;
                 active=true;
-                string kind = Category(sessionPid);
+                bool knownMedia;
+                string kind=Category(sessionPid,apps,out knownMedia);
                 categories.Add(kind);
                 // Unknown shared-role sessions can be browser calls. Dedicated communications
                 // streams are protected regardless of the foreground application.
                 if (kind == "会议" || (comm && !RouteTransaction.Equal(roles[1],p.Id))) result.Communicating = true;
-                if (comm && kind != "音乐" && kind != "影音" && kind != "游戏") result.SharedBusy = true;
+                if (comm && !knownMedia) result.SharedBusy = true;
             });
             if (active && collectPeaks) {
                 try { if (AudioCore.Peak(p.Id)>.001f) result.Audible.Add(p.Id); }

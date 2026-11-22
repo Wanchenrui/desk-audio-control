@@ -63,6 +63,23 @@ internal static class SceneSwitchTest
         signals.Capturing=true;
         Check(signals.ObservedScene("专注")=="录制" && signals.Guard()!=null,"recording takes precedence over panel interaction");
 
+        string appsPath=System.IO.Path.Combine(System.IO.Path.GetTempPath(),Guid.NewGuid().ToString("N")+".json");
+        var appFile=new SceneApplications(appsPath);
+        try {
+            JsonFile.Save(appsPath,new Dictionary<string,string>{{"Chrome.exe","影音"},{"teams","音乐"},{"mycall","会议"}});
+            var apps=appFile.Read();
+            bool media;
+            Check(SceneApplications.Category("chrome",apps,out media)=="影音" && !media,"browser mapping cannot relax shared call protection");
+            Check(SceneApplications.Category("teams",apps,out media)=="会议" && !media,"protected application");
+            Check(SceneApplications.Category("mycall",apps,out media)=="会议","user meeting app");
+            System.IO.File.WriteAllText(appsPath,"{");
+            Check(appFile.Read()==apps,"partial edit retains last usable file");
+            JsonFile.Save(appsPath,new Dictionary<string,string>{{"MyCall","录制"}});
+            Check(SceneApplications.Category("mycall",appFile.Read(),out media)=="录制","mapping reloads");
+            System.IO.File.Delete(appsPath);
+            Check(SceneApplications.Category("mycall",appFile.Read(),out media)==null,"removal restores defaults");
+        } finally { if (System.IO.File.Exists(appsPath)) System.IO.File.Delete(appsPath); }
+
         int attempts=0;
         var recovered=SceneContext.ReadWithRetry(delegate {
             if (attempts++==0) throw new System.Runtime.InteropServices.COMException("busy",unchecked((int)0x80010001));

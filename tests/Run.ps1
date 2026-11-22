@@ -25,6 +25,7 @@ $sources = @(
     (Join-Path $project 'AudioDiscovery.cs')
     (Join-Path $project 'SmartPolicy.cs')
     (Join-Path $project 'SceneSwitch.cs')
+    (Join-Path $project 'SceneApplications.cs')
     (Join-Path $project 'SceneContext.cs')
     (Join-Path $project 'PanelAudio.cs')
     (Join-Path $project 'MicDoctor.cs')
