@@ -43,6 +43,27 @@ internal sealed partial class AudioPanel
         overlay.Display();
     }
 
+    // Scan reasons are stored by enum name; only the timeline translates them.
+    static string SourceWord(string value)
+    {
+        switch (value)
+        {
+            case "Startup": return "启动";
+            case "Added": return "设备接入";
+            case "Removed": return "设备断开";
+            case "State": return "端口状态变化";
+            case "Default": return "默认设备变化";
+            case "Property": return "设备属性变化";
+            case "Poll": return "定时检查";
+            case "Refresh": return "手动刷新";
+            default: return value;
+        }
+    }
+    static string SourceName(string value)
+    {
+        return String.Join("、",(value ?? "").Split(new[] { ", " },StringSplitOptions.RemoveEmptyEntries).Select(v => SourceWord(v)));
+    }
+
     static string Outcome(string value)
     {
         switch (value)
@@ -71,12 +92,12 @@ internal sealed partial class AudioPanel
     {
         using (var dialog = new Form { Text = "活动时间线", Font = Theme.Face(9f), ForeColor = Theme.Ink,
             BackColor = Theme.Window, StartPosition = FormStartPosition.CenterScreen,
-            Size = new Size(P(900),P(420)), MinimumSize = new Size(P(580),P(300)) })
+            Size = new Size(P(940),P(420)), MinimumSize = new Size(P(580),P(300)) })
         {
             var list = new ListView { View = View.Details, FullRowSelect = true, Dock = DockStyle.Fill,
                 AccessibleName = "最近 30 天的活动时间线", ShowItemToolTips = true, HideSelection = false, BackColor = Theme.Surface, ForeColor = Theme.Ink };
-            list.Columns.Add("时间",P(122)); list.Columns.Add("场景",P(66)); list.Columns.Add("结果",P(95)); list.Columns.Add("候选设备",P(155));
-            list.Columns.Add("原因",P(260)); list.Columns.Add("触发源",P(145)); list.Columns.Add("耗时",P(75));
+            list.Columns.Add("时间",P(122)); list.Columns.Add("场景",P(60)); list.Columns.Add("结果",P(125)); list.Columns.Add("候选设备",P(150));
+            list.Columns.Add("原因",P(228)); list.Columns.Add("触发源",P(105)); list.Columns.Add("耗时",P(70));
             var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = P(50), Padding = new Padding(P(5)) };
             var totals = new Label { Dock = DockStyle.Top, Height = P(36), Padding = new Padding(P(8)), ForeColor = Theme.Muted };
             Action refresh = delegate {
@@ -92,7 +113,7 @@ internal sealed partial class AudioPanel
                 list.Items.Clear();
                 foreach (var r in Enumerable.Reverse(records))
                     list.Items.Add(new ListViewItem(new[] { r.Utc.ToLocalTime().ToString("MM-dd HH:mm:ss"),
-                        r.Scene ?? "",Outcome(r.Result),r.Candidates,r.Reason,r.Source,r.LatencyMs.HasValue ? r.LatencyMs + " ms" : "" }) { Tag = r, ToolTipText = r.Reason }).Selected = r.Id == selected;
+                        r.Scene ?? "",Outcome(r.Result),r.Candidates,r.Reason,SourceName(r.Source),r.LatencyMs.HasValue ? r.LatencyMs + " ms" : "" }) { Tag = r, ToolTipText = r.Reason }).Selected = r.Id == selected;
                 } finally { list.EndUpdate(); }
             };
             Action<string,Action> add = (label, action) => {
