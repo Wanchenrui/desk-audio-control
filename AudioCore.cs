@@ -96,7 +96,7 @@ public static class AudioCore
         void GetChannelCount(out uint count);
         void UnusedSetMasterVolumeLevel();
         void SetMasterVolumeLevelScalar(float level, IntPtr context);
-        void UnusedGetMasterVolumeLevel();
+        void GetMasterVolumeLevel(out float db);
         void GetMasterVolumeLevelScalar(out float level);
         void UnusedSetChannelVolumeLevel();
         void SetChannelVolumeLevelScalar(uint channel, float level, IntPtr context);
@@ -104,6 +104,8 @@ public static class AudioCore
         void GetChannelVolumeLevelScalar(uint channel, out float level);
         void SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, IntPtr context);
         void GetMute([MarshalAs(UnmanagedType.Bool)] out bool mute);
+        void StepInfo(); void StepUp(); void StepDown(); void HardwareSupport();
+        void GetVolumeRange(out float min,out float max,out float step);
     }
     [ComImport, Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     interface ISessionManager
@@ -352,7 +354,7 @@ public static class AudioCore
     {
         return WithService(id, (IMeter m) => { float peak; m.GetPeakValue(out peak); return peak; });
     }
-    static object ActivateOn(string id, Guid iid)
+    internal static object ActivateOn(string id, Guid iid)
     {
         if (String.IsNullOrEmpty(id)) throw new ArgumentNullException("id");
         var en = (IEnum)new MMEnumerator();
@@ -378,6 +380,15 @@ public static class AudioCore
         }
         public void Reset() { cache.Reset(); }
         public void Dispose() { cache.Dispose(); }
+    }
+    internal static GainPoint[] GainPoints(string id)
+    {
+        return WithService(id,(IVolume v)=>{
+            float min,max,step,actual,scalar;
+            v.GetVolumeRange(out min,out max,out step);
+            v.GetMasterVolumeLevel(out actual); v.GetMasterVolumeLevelScalar(out scalar);
+            return new[]{new GainPoint(0,min),new GainPoint((int)Math.Round(scalar*100),actual),new GainPoint(100,max)};
+        });
     }
     public static int Volume(string id)
     {

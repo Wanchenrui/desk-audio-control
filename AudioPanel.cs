@@ -16,6 +16,7 @@ internal sealed partial class AudioPanel : Form
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
+    const int TunePageIndex=2, UpdatePageIndex=3;
     readonly EventWaitHandle openEvent;
     readonly PanelAudio audio;
     readonly AudioEventBus bus = new AudioEventBus();
@@ -62,8 +63,8 @@ internal sealed partial class AudioPanel : Form
         ClientSize = new Size(Math.Min(P(1040), area.Width - P(24)), Math.Min(P(640), area.Height - P(60)));
         MinimumSize = SizeFromClientSize(new Size(Math.Min(P(980), ClientSize.Width), Math.Min(P(560), ClientSize.Height)));
         Location = new Point(Math.Max(area.X, area.X + (area.Width - Width) / 2), Math.Max(area.Y, area.Y + (area.Height - Height) / 2));
-        BuildShell();
-        BuildDevices(pages[0]); BuildSettings(pages[1]); BuildUpdates(pages[2]);
+        InitLanding(); BuildShell();
+        BuildDevices(pages[0]); BuildSettings(pages[1]); BuildUpdates(pages[UpdatePageIndex]); BuildTuning(pages[TunePageIndex]);
         BuildTray();
         IntPtr window = Handle;
         updates.Start();
@@ -81,7 +82,7 @@ internal sealed partial class AudioPanel : Form
         VisibleChanged += delegate { timer.Interval = Visible ? 60 : 420; };
         FormClosing += (s, e) => { if (!closing && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Hide(); } };
         FormClosed += (s, e) => {
-            Theme.Changed -= OnThemeChanged; timer.Stop(); bus.Wake -= WakeScanner; scanTimer.Dispose(); events.Dispose(); if (overlay != null) overlay.Dispose(); foreach (var peak in peaks) peak.Dispose();
+            CancelTuningJob(); StopLanding(); landingTimer.Dispose(); Theme.Changed -= OnThemeChanged; timer.Stop(); bus.Wake -= WakeScanner; scanTimer.Dispose(); events.Dispose(); if (overlay != null) overlay.Dispose(); foreach (var peak in peaks) peak.Dispose();
             UnregisterHotKey(window, 1); UnregisterHotKey(window, 2); UnregisterHotKey(window, 3);
             tray.Visible = false; tray.Dispose(); Application.ExitThread();
         };
@@ -92,17 +93,19 @@ internal sealed partial class AudioPanel : Form
     void BuildShell()
     {
         rail = new NavRail { Version = UpdateCheck.InstalledVersion.ToString(3) };
-        rail.Add("", "设备"); rail.Add("", "切换与设置"); rail.Add("", "更新");
+        rail.Add("", "设备"); rail.Add("", "切换与设置"); rail.Add("","声音调优"); rail.Add("", "更新");
         rail.IndexChanged += delegate { ShowPage(rail.Index); };
         Controls.Add(rail);
-        pages = new Surface[3];
+        pages = new Surface[4];
         for (int i = 0; i < pages.Length; i++) { pages[i] = new Surface(); Controls.Add(pages[i]); }
         ShowPage(0);
     }
     void ShowPage(int index)
     {
         for (int i = 0; i < pages.Length; i++) pages[i].Visible = i == index;
-        if (index == 2) { rail.Badge(2, false); if (updates != null) updates.Visit(); }
+        if (index == UpdatePageIndex) { rail.Badge(UpdatePageIndex, false); if (updates != null) updates.Visit(); }
+        if (index!=TunePageIndex) CancelTuningJob();
+        if (built && index==TunePageIndex) RefreshTuningPage();
         if (built && index == 0) RefreshLevels();
     }
     void LayoutAll()
@@ -112,7 +115,7 @@ internal sealed partial class AudioPanel : Form
         int railWidth = P(220), w = ClientSize.Width, h = ClientSize.Height;
         rail.SetBounds(0, 0, railWidth, h);
         foreach (var page in pages) page.SetBounds(railWidth, 0, Math.Max(0, w - railWidth), h);
-        LayoutDevices(pages[0]); LayoutSettings(pages[1]);
+        LayoutDevices(pages[0]); LayoutSettings(pages[1]); LayoutTuning(pages[TunePageIndex]);
         ResumeLayout(false);
     }
     protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutAll(); }
@@ -157,6 +160,7 @@ internal sealed partial class AudioPanel : Form
         if (now >= nextPoll)
         {
             nextPoll = now + 420;
+            try { LearnIfDue(); } catch (Exception error) { Fail(error.Message); }
             if (now >= nextJournalCleanup)
             {
                 nextJournalCleanup = now + 24L * 60 * 60 * 1000;
@@ -230,6 +234,7 @@ internal sealed partial class AudioPanel : Form
         BackColor = Theme.Window; ForeColor = Theme.Ink;
         foreach (var page in pages) page.BackColor = Theme.Window;
         devices.BackColor = Theme.Window;
+        filterList.BackColor=Theme.Surface; filterList.ForeColor=Theme.Ink;
         Chrome(); Invalidate(true);
     }
     void Chrome()

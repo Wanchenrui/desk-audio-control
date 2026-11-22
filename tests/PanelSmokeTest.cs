@@ -14,6 +14,16 @@ internal sealed partial class AudioPanel
     {
         public volatile bool Connected, ActiveCall, Bluetooth, HfpOnly;
         public string Foreground;
+        public readonly Dictionary<string,int> Levels=new Dictionary<string,int>{{"old-music",55},{"usb",88},{"desk",50}};
+        public int LevelAtRoute;
+        public float Signal;
+        public bool RejectRoute;
+        public override int Level(string id) { return Levels[id]; }
+        public override void SetLevel(string id,int value) { Levels[id]=value; }
+        public override GainPoint[] GainPoints(string id) { return new[]{new GainPoint(0,-100),new GainPoint(Level(id),Level(id)-100),new GainPoint(100,0)}; }
+        public override bool Muted(string id) { return false; }
+        public override float Peak(string id) { return Signal; }
+        public override string TuningGuard() { return ActiveCall ? "会议保护" : null; }
         public readonly Stopwatch Clock = Stopwatch.StartNew();
         public int Scans, Writes;
         public long AppliedAt;
@@ -56,6 +66,8 @@ internal sealed partial class AudioPanel
         public override string Guard(string[] roles) { return ActiveCall ? "会议保护" : null; }
         public override void RouteOutputs(string[] targets,string[] expected)
         {
+            if (RejectRoute) throw new InvalidOperationException("simulated route failure");
+            int level; if (Levels.TryGetValue(targets[1],out level)) LevelAtRoute=level;
             RouteTransaction.Apply(targets,i => Roles[i],(i,v) => Roles[i]=v,expected);
             Writes++; AppliedAt = Clock.ElapsedMilliseconds;
         }
@@ -65,7 +77,7 @@ internal sealed partial class AudioPanel
     {
         WaitFor(() => hasSnapshot);
         var elapsed = new List<long>();
-        preferNew = true; autonomy = 2;
+        preferNew = true; autonomy = 2; tuneEnabled=true;
         for (int i = 0; i < 7; i++)
         {
             // Advance past the quiet period between independent replay runs.
@@ -94,6 +106,7 @@ internal sealed partial class AudioPanel
         elapsed.Sort();
         Console.WriteLine("7/7 insertion bursts merged; 7/7 role restores; call guard passed; simulated endpoint -> verified route median {0} ms (range {1}-{2})",
             elapsed[3],elapsed[0],elapsed[6]);
+        tuneEnabled=false;
         SmokeAutonomy(device);
     }
 
@@ -154,6 +167,37 @@ internal sealed partial class AudioPanel
         WaitFor(() => device.Roles[1] == "usb");
         if (!journal.LatestUndo().Evidence.Winner().Recent) throw new Exception("late stereo arrival lost");
         Console.WriteLine("HFP-only connection waited for a later stereo endpoint on the same headset.");
+        UndoRoute("test"); tuneEnabled=true; insert(2);
+        if (device.LevelAtRoute>12 || ramp==null) throw new Exception("target must be attenuated before automatic route");
+        WaitFor(()=>ramp==null);
+        if (device.Level("usb")!=35) throw new Exception("cold headphone ceiling and fade");
+        UndoRoute("test"); if (device.Level("usb")!=88) throw new Exception("route undo lost original gain");
+        insert(2);
+        device.Levels["usb"]=31; WaitFor(()=>ramp==null);
+        UndoRoute("test"); if (device.Level("usb")!=31) throw new Exception("ramp overwrote manual edit");
+        device.Levels["usb"]=88; insert(2); device.ActiveCall=true;
+        int held=device.Level("usb"); WaitFor(()=>ramp==null);
+        if (device.Level("usb")!=held) throw new Exception("call did not stop fade");
+        device.ActiveCall=false; UndoRoute("test");
+        insert(2); device.Signal=1; int start=device.Level("usb"); WaitFor(()=>ramp==null);
+        if (device.Level("usb")>=start) throw new Exception("peak suppression");
+        device.Signal=0; UndoRoute("test");
+        device.RejectRoute=true; insert(2); device.RejectRoute=false;
+        if (device.Level("usb")!=88 || device.Roles[1]=="usb") throw new Exception("pre-route volume rollback");
+        SetDefault(groups.Single(g=>g.Key=="usb").Outputs.First(p=>p.Id=="usb"));
+        WaitFor(()=>ramp==null);
+        if (device.Level("usb")!=35 || device.LevelAtRoute>12) throw new Exception("manual route bypassed soft landing");
+        rail.Index=TunePageIndex; RefreshTuningPage();
+        outputBox.SelectedIndex=outputBox.Items.Cast<TuneEndpoint>().ToList().FindIndex(p=>p.Port.Id=="usb");
+        RestoreTuned(TuneOut); if (device.Level("usb")!=88) throw new Exception("manual tuning undo");
+        inputBox.SelectedIndex=inputBox.Items.Cast<TuneEndpoint>().ToList().FindIndex(p=>p.Port.Id=="desk");
+        diagnosis=new MicReport { Low=true,SpeechDb=-35,NoiseDb=-62 }; diagnosedLevel=50; diagnosedPort="desk";
+        ApplyMicFix(); if (device.Level("desk")!=58) throw new Exception("doctor repair");
+        RestoreTuned(TuneIn); if (device.Level("desk")!=50) throw new Exception("doctor repair undo");
+        var source=groups.First(p=>p.Key=="old-music"); var dest=groups.First(p=>p.Key=="usb");
+        levels.Learn(source.Key,65,-35); levels.Learn(dest.Key,30,-70);
+        if (MatchedLevel(source,dest,"old-music","usb",88,true)!=20) throw new Exception("relative gain transfer between two calibrated devices");
+        Console.WriteLine("P3 pre-route attenuation, manual/automatic fade, peak cut, call/volume interruption, failure rollback, route undo and microphone repair/restore passed.");
     }
 
     internal void SmokeHardware()
@@ -166,19 +210,26 @@ internal sealed partial class AudioPanel
     internal void SmokeViews(string folder)
     {
         Open(); WaitFor(() => hasSnapshot);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 4; i++)
         {
             rail.Index = i; LayoutAll(); Update();
-            if (i == 2)
+            if (i == UpdatePageIndex)
             {
-                var available = new UpdateResult(UpdateState.Available,"发现新版本 v1.4.0。","v1.4.0") {
-                    Package = new UpdatePackage(1,123,new String('a',64),new Version(1,4,0))
+                var available = new UpdateResult(UpdateState.Available,"发现新版本 v1.5.0。","v1.5.0") {
+                    Package = new UpdatePackage(1,123,new String('a',64),new Version(1,5,0))
                 };
                 updates.ShowRelease(available);
                 if (!updates.Controls.Find("InstallUpdate",true).Any(c => c.Visible && c.Enabled))
                     throw new Exception("In-app update action missing");
             }
             using (var bmp = new Bitmap(Width,Height)) { DrawToBitmap(bmp,new Rectangle(0,0,Width,Height)); bmp.Save(Path.Combine(folder,"page-"+i+".png")); }
+        }
+        rail.Index=TunePageIndex;
+        for (int i=0;i<3;i++) {
+            SelectTuneTab(i);
+            if (i==2) modelBox.SelectedItem=presets.First(p=>p.Model=="Sennheiser HD 600");
+            Update();
+            using (var bmp=new Bitmap(Width,Height)) { DrawToBitmap(bmp,new Rectangle(0,0,Width,Height)); bmp.Save(Path.Combine(folder,"tuning-"+i+".png")); }
         }
         using (var capture = new System.Windows.Forms.Timer { Interval = 180 })
         {
@@ -220,7 +271,8 @@ internal static class PanelSmokeTest
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             string folder = Environment.GetEnvironmentVariable("DESKAUDIO_SMOKE_DIR");
-            new SettingsFile(folder, () => new Dictionary<string,string> { { "AutomaticUpdates","0" }, { "PreferNewOutput","0" } });
+            new SettingsFile(folder, () => new Dictionary<string,string> { { "AutomaticUpdates","0" }, { "PreferNewOutput","0" }, { "EnableTuning","1" } });
+            if (args[0]=="bridge") { TuningStream.CheckWindowsBridge(); return 0; }
             bool replay = args[0] == "replay";
             Theme.Palette(args.Contains("dark"));
             if (args.Length > 2) typeof(Theme).GetField("scale",BindingFlags.NonPublic | BindingFlags.Static)

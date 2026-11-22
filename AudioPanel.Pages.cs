@@ -148,7 +148,7 @@ internal sealed partial class AudioPanel
     {
         updates = new UpdatePage(this, tag =>
         {
-            rail.Badge(2, true);
+            rail.Badge(UpdatePageIndex, true);
             tray.ShowBalloonTip(5000, "桌面音频有新版本", tag + " 已发布，可在更新页安装并重启。", ToolTipIcon.Info);
         }, delegate { closing = true; Close(); });
         updates.Dock = DockStyle.Fill;

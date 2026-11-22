@@ -53,7 +53,7 @@ internal static class SceneContext
         catch (System.ComponentModel.Win32Exception) { return null; }
     }
 
-    public static SceneSignals Read(IEnumerable<AudioItem> inputs,IEnumerable<AudioItem> outputs,string[] roles)
+    public static SceneSignals Read(IEnumerable<AudioItem> inputs,IEnumerable<AudioItem> outputs,string[] roles,bool ignoreOwnStreams = false)
     {
         var result = new SceneSignals { Hour = DateTime.Now.Hour };
         try
@@ -71,7 +71,13 @@ internal static class SceneContext
             var input = new LastInput { Size = (uint)Marshal.SizeOf(typeof(LastInput)) };
             result.Away = window == IntPtr.Zero || result.Foreground == "离开" ||
                 (GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount - input.Tick) >= 600000);
-            result.Capturing = inputs.Any(p => AudioCore.InUse(p.Id));
+            uint self=GetCurrentProcessId();
+            foreach (var p in inputs)
+            {
+                if (ignoreOwnStreams) AudioCore.ActiveSessions(p.Id,owner=>{ if (owner!=self) result.Capturing=true; });
+                else result.Capturing=AudioCore.InUse(p.Id);
+                if (result.Capturing) break;
+            }
             var categories = new HashSet<string>();
             bool sawCommunication = false;
             foreach (var p in outputs)
@@ -79,6 +85,7 @@ internal static class SceneContext
                 bool comm = RouteTransaction.Equal(p.Id,roles[2]);
                 sawCommunication |= comm;
                 result.Sessions += AudioCore.ActiveSessions(p.Id,sessionPid => {
+                    if (ignoreOwnStreams && sessionPid==self) return;
                     string kind = Category(sessionPid);
                     categories.Add(kind);
                     // Unknown shared-role sessions can be browser calls. Dedicated communications

@@ -11,6 +11,7 @@ internal sealed partial class AudioPanel
         var last = journal.LatestUndo();
         if (last == null) throw new InvalidOperationException("没有可以撤销的自动切换。");
         var result = DecisionRecord.Create(source,last.Candidates,"恢复切换前的默认角色","undone");
+        StopLanding();
         try { audio.Restore(last); }
         catch (Exception e)
         {
@@ -23,6 +24,7 @@ internal sealed partial class AudioPanel
         pendingRoute = null;
         result.Scene = last.Scene; result.DeviceKey = last.DeviceKey; result.Related = last.Id;
         journal.Add(result);
+        RollbackLevel(last.Target,last.Result=="prepared" ? last.Id : last.Related);
         bus.Publish(ScanReason.Refresh);
         ShowRoute(NameFor(defaultOut,0), defaultOut,false);
     }
@@ -45,6 +47,7 @@ internal sealed partial class AudioPanel
     {
         switch (value)
         {
+            case "tuned": return "声音调优";
             case "hint": return "L0 提示";
             case "offer": return "L1 执行建议";
             case "scene": return "场景变化";

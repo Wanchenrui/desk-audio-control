@@ -1,4 +1,4 @@
-param([string]$Screenshots)
+param([string]$Screenshots,[switch]$AudioBridge)
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $work = Join-Path ([IO.Path]::GetTempPath()) ("DeskAudio.Smoke." + [guid]::NewGuid().ToString('N'))
@@ -24,9 +24,10 @@ try {
     }
     $exe = Join-Path $work 'PanelSmoke.exe'
     $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-    & $compiler /nologo /target:exe /platform:x64 /optimize+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:Accessibility.dll /r:System.Security.dll /r:System.Web.Extensions.dll /main:PanelSmokeTest "/win32manifest:$project\DeskAudio.manifest" "/out:$exe" @sources (Join-Path $PSScriptRoot 'PanelSmokeTest.cs')
+    & $compiler /nologo /target:exe /platform:x64 /optimize+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:Accessibility.dll /r:System.Security.dll /r:System.Web.Extensions.dll "/resource:$project\eq\presets.txt,DeskAudio.EQ.txt" "/resource:$project\eq\AutoEq-LICENSE.txt,DeskAudio.EQ.License" /main:PanelSmokeTest "/win32manifest:$project\DeskAudio.manifest" "/out:$exe" @sources (Join-Path $PSScriptRoot 'PanelSmokeTest.cs') (Join-Path $PSScriptRoot 'TuningBridgeTest.cs')
     if ($LASTEXITCODE) { throw 'Smoke compilation failed.' }
-    foreach ($mode in 'replay','idle','view light 1','view dark 1','view light 1.25','view dark 1.25') {
+    foreach ($mode in 'replay','idle','bridge','view light 1','view dark 1','view light 1.25','view dark 1.25') {
+        if ($mode -eq 'bridge' -and !$AudioBridge) { continue }
         if ($mode.StartsWith('view') -and !$Screenshots) { continue }
         $env:DESKAUDIO_SMOKE_DIR = Join-Path $work ($mode.Replace(' ','-'))
         [void][IO.Directory]::CreateDirectory($env:DESKAUDIO_SMOKE_DIR)

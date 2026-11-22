@@ -15,14 +15,17 @@ $sources = @(
     (Join-Path $project 'SceneSwitch.cs')
     (Join-Path $project 'SceneContext.cs')
     (Join-Path $project 'PanelAudio.cs')
+    (Join-Path $project 'MicDoctor.cs')
+    (Join-Path $project 'EqPreset.cs')
+    (Join-Path $project 'VolumeTuning.cs')
 )
 $tempName = 'DeskAudio.Tests.' + [Guid]::NewGuid().ToString('N') + '.exe'
 $tempExe = Join-Path ([IO.Path]::GetTempPath()) $tempName
 
 try {
-    foreach ($suite in 'DiscoveryTest', 'SmartPolicyTest', 'EndpointCacheTest', 'ScanGateTest', 'FoundationTest', 'SceneSwitchTest') {
+    foreach ($suite in 'DiscoveryTest', 'SmartPolicyTest', 'EndpointCacheTest', 'ScanGateTest', 'FoundationTest', 'SceneSwitchTest', 'TuningTest') {
         $testSource = Join-Path $PSScriptRoot ($suite + '.cs')
-        & $compiler /nologo /target:exe /platform:x64 /codepage:65001 /r:System.Web.Extensions.dll "/out:$tempExe" @sources $testSource
+        & $compiler /nologo /target:exe /platform:x64 /codepage:65001 /r:System.Web.Extensions.dll "/resource:$project\eq\presets.txt,DeskAudio.EQ.txt" "/resource:$project\eq\AutoEq-LICENSE.txt,DeskAudio.EQ.License" "/out:$tempExe" @sources $testSource
         if ($LASTEXITCODE -ne 0) { throw "Could not compile $suite." }
 
         & $tempExe

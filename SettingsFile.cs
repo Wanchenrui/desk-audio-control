@@ -105,6 +105,17 @@ internal sealed class SettingsFile
             .Select(k => k.Substring(prefix.Length)).ToArray();
     }
 
+    // A volume transaction checkpoints intent and readback around a hardware write.
+    // Keep the same reentrant file mutex across those checkpoints, including other desktops.
+    public T WithFreshValues<T>(Func<T> operation)
+    {
+        lock (sync)
+        {
+            if (Warning!=null) throw new IOException(Warning);
+            return JsonFile.Locked(path,delegate { values=LoadValues(); return operation(); });
+        }
+    }
+
     public void Put(string key, string value)
     {
         lock (sync)

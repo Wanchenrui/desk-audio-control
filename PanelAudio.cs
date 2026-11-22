@@ -13,7 +13,17 @@ internal class PanelAudio
     public virtual void RouteInputs(string[] targets,string[] expected) { AudioCore.RouteRoles(targets,1,expected); }
     public virtual SceneSignals Context(List<SmartGroup> groups,string[] roles)
     {
-        return SceneContext.Read(groups.SelectMany(g => g.Inputs),groups.SelectMany(g => g.Outputs),roles);
+        return SceneContext.Read(groups.SelectMany(g => g.Inputs),groups.SelectMany(g => g.Outputs),roles,true);
+    }
+    public virtual GainPoint[] GainPoints(string id) { return AudioCore.GainPoints(id); }
+    public virtual int Level(string id) { return AudioCore.Volume(id); }
+    public virtual void SetLevel(string id,int value) { AudioCore.SetVolume(id,value); }
+    public virtual bool Muted(string id) { return AudioCore.Muted(id); }
+    public virtual float Peak(string id) { return AudioCore.Peak(id); }
+    public virtual string TuningGuard()
+    {
+        try { return SceneContext.Read(AudioCore.List(1),AudioCore.List(0),Outputs(),true).Guard(); }
+        catch (Exception) { return "无法确认设备占用"; }
     }
     public virtual string Guard(string[] roles)
     {

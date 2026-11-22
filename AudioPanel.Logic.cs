@@ -93,6 +93,7 @@ internal sealed partial class AudioPanel
             else if (preferNew && (added.Count > 0 || sceneChanged || topology))
                 ConsiderRoute(snap,reasons,since,added.ToArray());
             RefreshSmartSettings();
+            try { ObserveComfort(); RefreshTuningPage(); } catch (Exception e) { Fail(e.Message); }
             var ordered = groups.OrderBy(g => !Primary(g)).ThenBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
             var shown = ordered.Where(g => Primary(g) || showAll.Checked).ToList();
             counts.Text = "日常设备  " + ordered.Count(Primary) + (showAll.Checked ? "    ·    全部 " + ordered.Count : "");

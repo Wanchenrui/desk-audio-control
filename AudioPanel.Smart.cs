@@ -119,7 +119,7 @@ internal sealed partial class AudioPanel
     DecisionRecord PlanRoute(Snapshot snap,string source,string[] added)
     {
         var evidence = new SwitchEvidence { DefaultOutput = defaultOut, Scene = scenes.Current, Sessions = snap.Signals.Sessions,
-            Ranked = Candidates(journal.Records(),added), Sensitivity = sensitivity, Guard = snap.Signals.Guard(),
+            Ranked = Candidates(journal.Records(),added), Sensitivity = sensitivity, Guard = tuningJob==null ? snap.Signals.Guard() : "正在进行声音调优",
             Quiet = clock.ElapsedMilliseconds < quietUntil, CanRestore = snap.Outputs.All(v => !String.IsNullOrEmpty(v)) };
         var best = evidence.Winner();
         string[] inputs = null;
@@ -215,6 +215,7 @@ internal sealed partial class AudioPanel
         journal.Add(intent);
         var targets = Three(intent.Target);
         bool writing = false;
+        VolumeChange volumeChange=null;
         try
         {
             var roles = audio.Outputs();
@@ -227,11 +228,17 @@ internal sealed partial class AudioPanel
                 skipped.Related = intent.Id; skipped.Scene = intent.Scene; skipped.Evidence = intent.Evidence;
                 journal.Add(skipped); return;
             }
+            volumeChange=PrepareLanding(intent.Target,roles[1],intent.Id);
+            if (volumeChange!=null) {
+                string protection=audio.TuningGuard();
+                if (protection!=null) throw new InvalidOperationException(protection);
+            }
             writing = true;
             audio.RoutePair(targets,intent.Before,intent.InputAfter,intent.InputBefore);
         }
         catch (Exception e)
         {
+            AbortLanding(volumeChange,intent.Before);
             var failure = DecisionRecord.Create(intent.Source,intent.Candidates,e.Message,"failed");
             bool restored = !writing;
             if (writing)
@@ -251,6 +258,7 @@ internal sealed partial class AudioPanel
         done.LatencyMs = (long)((Stopwatch.GetTimestamp() - since) * 1000.0 / Stopwatch.Frequency);
         done.Related = intent.Id; done.Target = intent.Target; done.DeviceKey = intent.DeviceKey; done.Scene = intent.Scene;
         done.Before = intent.Before; done.InputBefore = intent.InputBefore; done.InputAfter = intent.InputAfter; done.Evidence = intent.Evidence;
+        BeginFade(volumeChange);
         journal.Add(done);
         var best = done.Evidence.Winner();
         if (best.Level != 3) ShowRoute(best.Name,done.Target,true);

@@ -64,7 +64,9 @@ internal sealed partial class AudioPanel
                 if (p == null) return;
                 int n = volume[flow].Value;
                 quietUntil = clock.ElapsedMilliseconds + 30000;
-                AudioCore.SetVolume(p.Id, n);
+                if (ramp!=null && Same(ramp.Endpoint,p.Id)) StopLanding();
+                audio.SetLevel(p.Id,n);
+                if (flow==0 && Selected()!=null && !Selected().Virtual) QueueComfort(Selected().Key,p.Id,n,1500);
                 laneValue[flow].Text = n + " %";
             }, false);
         };
