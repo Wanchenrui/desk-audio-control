@@ -138,6 +138,23 @@ internal sealed class SettingsFile
         }
     }
 
+    public int ResetUsbIdentity(string model)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(model??"",@"\AVID_[0-9A-Fa-f]{4}&PID_[0-9A-Fa-f]{4}\z",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase|System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+            throw new ArgumentException("请指定一个 USB 型号，例如 VID_1234&PID_ABCD");
+        string key="AmbiguousUsbIdentities/"+model;
+        return WithFreshValues(delegate {
+            var matches=values.Keys.Where(k=>String.Equals(k,key,StringComparison.OrdinalIgnoreCase) ||
+                k.StartsWith(key+":S:",StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (matches.Length!=0) {
+                var next=new Dictionary<string,string>(values,StringComparer.OrdinalIgnoreCase);
+                foreach (string entry in matches) next.Remove(entry);
+                Persist(next); values=next;
+            }
+            return matches.Length;
+        });
+    }
     void Persist(Dictionary<string,string> next) { JsonFile.Save(path,new Document { Version = 1, Values = next }); }
 }
 

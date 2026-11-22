@@ -86,6 +86,13 @@ internal static class FoundationTest
             Check(reopened.Get("example") == "persist" && reopened.Get("PreferNewOutput") == "0", "restart preserves configuration");
             cfg.Put("from-first","keep");
             reopened.Put("from-second","keep");
+            string usb="AmbiguousUsbIdentities/VID_CAFE&PID_0001";
+            cfg.Put(usb,"1"); cfg.Put(usb+":S:cloned","1"); cfg.Put("AmbiguousUsbIdentities/VID_CAFE&PID_0002","1");
+            cfg.Put("Comfort/USB:VID_CAFE&PID_0001","keep");
+            Check(reopened.ResetUsbIdentity("vid_cafe&pid_0001")==2 && reopened.ResetUsbIdentity("VID_CAFE&PID_0001")==0,
+                "reset one model and its duplicate serials exactly once");
+            Check(reopened.Get("AmbiguousUsbIdentities/VID_CAFE&PID_0002")=="1" && reopened.Get("Comfort/USB:VID_CAFE&PID_0001")=="keep",
+                "retain other identities and calibration settings");
             Check(new SettingsFile(folder,null).Get("from-first") == "keep", "separate writers preserve other settings");
             reopened.Put("example", null);
             Check(reopened.Get("example") == null, "deleted value stays deleted");

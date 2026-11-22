@@ -45,6 +45,18 @@ internal static class Program
         bool first;
         using(var mutex=new Mutex(true,@"Local\DeskAudioControl.Panel",out first))
         using(var show=new EventWaitHandle(false,EventResetMode.AutoReset,@"Local\DeskAudioControl.Show")){
+            if (args.Length>0 && args[0]=="--reset-usb-identity") {
+                try {
+                    if (!first) throw new InvalidOperationException("请先退出托盘中的 DeskAudio，再重置 USB 型号识别。");
+                    int count=AppConfig.Store.ResetUsbIdentity(args.Length==2 ? args[1] : null);
+                    MessageBox.Show(count==0 ? "该型号没有歧义记录。" : "已清除该型号的歧义记录。下次启动将按当前连接重新识别。",
+                        "USB 型号识别",MessageBoxButtons.OK,MessageBoxIcon.Information);
+                } catch (Exception e) {
+                    Environment.ExitCode=1;
+                    MessageBox.Show(e.Message,"USB 型号识别",MessageBoxButtons.OK,MessageBoxIcon.Error);
+                }
+                return;
+            }
             if(!first){if(!hidden)show.Set();return;}
             Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
             try{using(var form=new AudioPanel(hidden,show)){
