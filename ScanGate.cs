@@ -40,7 +40,8 @@ internal sealed class ScanGate
     }
     public int Delay(long now)
     {
-        return (int)Math.Max(1, Math.Min(quiet - (now - lastRequest), longest - (now - firstRequest)));
+        long wait=pending ? Math.Min(quiet-(now-lastRequest),longest-(now-firstRequest)) : quiet;
+        return (int)Math.Max(1,Math.Min(Int32.MaxValue,wait));
     }
     public void End() { running = false; }
 }

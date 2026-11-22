@@ -37,8 +37,9 @@ internal static class BluetoothLink
                     }
                 } finally { CloseHandle(radio); }
             } while (BluetoothFindNextRadio(search,out radio));
-            // ERROR_NO_MORE_ITEMS means all radios were observed successfully.
-            return known && Marshal.GetLastWin32Error()==259 ? (bool?)false : null;
+            // Capture the failed enumeration call before disposing the search handle.
+            int enumerationError=Marshal.GetLastWin32Error();
+            return known && enumerationError==259 ? (bool?)false : null;
         } finally { BluetoothFindRadioClose(search); }
     }
     internal static bool? Read(string address)

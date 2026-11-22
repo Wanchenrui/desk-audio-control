@@ -26,6 +26,11 @@ internal static class PresenceTest
         if (receiver.Presence.MaxLevel!=3) throw new Exception("fresh physical insertion");
         model.Observe(connected,connected,audible,true,true,55000,null,history);
         if (receiver.Presence.MaxLevel!=1) throw new Exception("arrival evidence expires");
+        model.Observe(empty,connected,audible,true,true,60000,null,history);
+        model.Observe(connected,empty,audible,true,true,62000,null,history);
+        if (receiver.Presence.MaxLevel!=3) throw new Exception("arrival at the bounce boundary");
+        model.Observe(connected,connected,audible,true,true,91999,null,history);
+        if (receiver.Presence.MaxLevel!=3) throw new Exception("unchanged endpoint retains arrival evidence");
         var port=new AudioItem { Id="usb", ParentPresent=true };
         Expect(1,port,false,0);
         Expect(3,port,true,0);

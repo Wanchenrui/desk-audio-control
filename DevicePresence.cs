@@ -18,9 +18,12 @@ internal sealed class DevicePresence
         bool hasSnapshot,bool remember,long now,string selectedPort,Dictionary<string,int> corrections)
     {
         var previous=new HashSet<string>(previousGroups.SelectMany(g=>g.Outputs.Concat(g.Inputs)).Select(p=>p.Id),StringComparer.OrdinalIgnoreCase);
+        // Even incremental discovery supplies the complete merged inventory. A disappearance
+        // invalidates the old arrival window so a short driver restart cannot confirm a port.
         var next=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
         var current=new HashSet<string>(groups.SelectMany(g=>g.Outputs.Concat(g.Inputs)).Select(p=>p.Id),StringComparer.OrdinalIgnoreCase);
         if (remember) {
+            // At exactly two seconds a reappearance is a fresh arrival.
             foreach (var id in missingSince.Where(kv=>now-kv.Value>=2000).Select(kv=>kv.Key).ToArray()) missingSince.Remove(id);
             foreach (var id in previous.Except(current,StringComparer.OrdinalIgnoreCase)) missingSince[id]=now;
         }
@@ -49,6 +52,7 @@ internal sealed class DevicePresence
         if (negative && (positive || playing)) return new PresenceResult("不明","连接状态与其他在线证据冲突",0);
         if (negative) return new PresenceResult("已离线",port.JackConnected==false ? "驱动报告插孔已拔出" : "蓝牙链路已断开",-1);
         if (positive) return new PresenceResult("确认在线",port.JackConnected==true ? "驱动检测到插头" : "蓝牙链路已连接",3);
+        // Level zero remains visible for hints, including when the autonomy setting is higher.
         if (corrections>=3) return new PresenceResult("不明","该设备曾多次在自动切换后被立即改回",0);
         if (playing || selected) return new PresenceResult("确认在线",playing ? "有活动会话且端点峰值非零" : "近期由用户选中",3);
         if (arrived && port.ParentPresent) return new PresenceResult("确认在线","检测到新端口及其即插即用父节点",3);

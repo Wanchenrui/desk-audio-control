@@ -21,6 +21,9 @@ public static class ScanGateTest
         var idle = new ScanGate(400, 2000);
         Check(!idle.TryBegin(0) && !idle.TryBegin(10000), "nothing starts without a request");
 
+        Check(idle.Delay(10000)==400 && new ScanGate(0,0).Delay(0)==1 &&
+            new ScanGate(Int64.MaxValue,Int64.MaxValue).Delay(0)==Int32.MaxValue,"idle delay fits the timer interval");
+
         var g = new ScanGate(400, 2000);
         g.Request(0);
         Check(!g.TryBegin(399), "a scan waits for the quiet period");
