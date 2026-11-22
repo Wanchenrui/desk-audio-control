@@ -254,6 +254,16 @@ internal sealed partial class AudioPanel
             using (var bmp = new Bitmap(osd.Width,osd.Height)) { osd.DrawToBitmap(bmp,osd.ClientRectangle); bmp.Save(Path.Combine(folder,"overlay.png")); }
             WaitFor(() => osd.IsDisposed);
         }
+        var sample = new List<AudioItem> {
+            new AudioItem { Id="usb",Name="USB 耳机",Flow=0 },
+            new AudioItem { Id="desk",Name="HECATE G1200",Flow=0 }
+        };
+        using (var quickPanel = new QuickPanel(sample,p => p.Id=="desk",38,false,delegate {},delegate {},delegate {},delegate {}))
+        {
+            quickPanel.Display();
+            if (quickPanel.IsDisposed) throw new Exception("Quick panel closed before it could be captured");
+            using (var bmp = new Bitmap(quickPanel.Width,quickPanel.Height)) { quickPanel.DrawToBitmap(bmp,quickPanel.ClientRectangle); bmp.Save(Path.Combine(folder,"quick.png")); }
+        }
     }
     internal static void WaitFor(Func<bool> condition)
     {

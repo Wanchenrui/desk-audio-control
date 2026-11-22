@@ -145,7 +145,36 @@ internal sealed partial class AudioPanel : Form
             menu.Items.Add("退出", null, (o, a) => { closing = true; Close(); });
         };
         tray.ContextMenuStrip = menu; tray.Icon = Icon; tray.Text = "桌面音频"; tray.Visible = true;
-        tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) Open(); };
+        tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowQuick(); };
+    }
+
+    QuickPanel quick;
+    // Left click on the tray icon opens a small panel; the full window stays one click further.
+    void ShowQuick()
+    {
+        if (QuickPanel.JustClosed) return;
+        if (quick != null && !quick.IsDisposed) { quick.Close(); return; }
+        if (!hasSnapshot) { Open(); return; }
+        try
+        {
+            string id = audio.Default(0,1);
+            var current = id == null ? null : groups.FirstOrDefault(g => ContainsId(g.Outputs,id));
+            string name = current == null ? "默认输出" : current.Name;
+            var panel = new QuickPanel(OutputCycle(),p => current != null && ContainsId(current.Outputs,p.Id),
+                id == null ? 0 : audio.Level(id),id != null && audio.Muted(id),
+                p => Act(() => SetDefault(p)),
+                n => Act(() => {
+                    if (id == null) return;
+                    quietUntil = clock.ElapsedMilliseconds + 30000;
+                    if (ramp != null && Same(ramp.Endpoint,id)) StopLanding();
+                    audio.SetLevel(id,n);
+                },false),
+                () => Act(() => { if (id != null) Toggle(new AudioItem { Id = id, Flow = 0, Name = name }); }),
+                Open);
+            panel.FormClosed += delegate { if (quick == panel) quick = null; };
+            quick = panel; panel.Display();
+        }
+        catch (Exception e) { Fail(e.Message); }
     }
 
     // Endpoint events wake the scan scheduler independently of the tray polling interval.
