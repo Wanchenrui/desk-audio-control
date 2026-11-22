@@ -5,7 +5,8 @@ using System.Linq;
 
 internal sealed partial class AudioPanel
 {
-    readonly SceneTracker scenes = new SceneTracker();
+    readonly SceneTracker scenes = new SceneTracker(
+        ReadNumber("SceneConfirmMs",5000,0,60000),ReadNumber("SceneDwellMs",15000,0,300000));
     string[] expectedOutputs, expectedInputs;
     DecisionRecord pendingRoute;
     long offerUntil;

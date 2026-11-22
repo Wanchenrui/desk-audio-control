@@ -81,6 +81,11 @@ internal static class SceneSwitchTest
         Check(!scenes.Observe("游戏",21000) && !scenes.Observe("游戏",27000),"minimum residence");
         Check(scenes.Observe("游戏",36000),"stable after dwell");
 
+        var quick=new SceneTracker(500,2000);
+        quick.Observe("音乐",0); quick.Observe("专注",1400);
+        Check(!quick.Observe("专注",1900) && quick.Observe("专注",2000),"custom dwell and confirmation times");
+        var immediateScene=new SceneTracker(0,0); immediateScene.Observe("音乐",0);
+        Check(immediateScene.Observe("专注",1),"explicit zero dwell");
         var current = new RouteCandidate { Id="old", Name="音箱" };
         var usb = new RouteCandidate { Id="usb", Name="USB", Recent=true };
         var input = new SwitchEvidence { Scene="日常", Ranked=new[] { current,usb }, DefaultOutput="old", CanRestore=true, Sensitivity=50 };
@@ -100,6 +105,13 @@ internal static class SceneSwitchTest
         input.Quiet=false; input.CanRestore=false;
         Check(input.SkipReason()!=null,"missing previous role");
         var now = DateTime.UtcNow;
+        var aged=Action("manual","a","音乐",now.AddDays(-14));
+        Check(RouteTrust.From(new[]{aged},"a","音乐",now).Preference==4,"preference halves in fourteen days");
+        var recent=Action("manual","a","音乐",now.AddMinutes(-1));
+        Check(RouteTrust.From(new[]{recent},"a","音乐",now).Preference==8,"recent manual preference");
+        var oldUndo=Action("undone","a","音乐",now.AddDays(-14));
+        Check(RouteTrust.From(new[]{oldUndo},"a","音乐",now).Preference==-6,"old corrections decay too");
+        Check(RouteTrust.From(Enumerable.Repeat(aged,10),"a","音乐",now).Preference==12,"even saturated scores decay");
         var observations=Enumerable.Range(0,8).Select(i=>Action("applied","usb","音乐",now.AddMinutes(-i-1))).ToList();
         Check(RouteFeedback.From(observations,"usb","音乐",now).Offset>0,"settled actions update posterior");
         observations[0].Imported=true;

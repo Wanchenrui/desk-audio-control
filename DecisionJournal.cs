@@ -38,6 +38,7 @@ internal sealed class SwitchEvidence
         var current = Ranked.FirstOrDefault(p => p != null && RouteTransaction.Equal(p.Id,DefaultOutput));
         int lead = best.Score(this) - (current == null ? 0 : current.Score(this));
         int threshold=4+(100-Sensitivity)/4;
+        // V1 stores feedback-adjusted scores. Its monotonic probability map preserves the v0 margin threshold.
         if (ModelVersion==0) return lead<threshold ? "margin" : null;
         return RouteFeedback.Probability(lead)<RouteFeedback.Probability(threshold) ? "margin" : null;
     }

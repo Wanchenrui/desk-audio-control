@@ -37,12 +37,18 @@ internal sealed class SceneTracker
     public string Current { get; private set; }
     string pending;
     long pendingSince, entered;
+    readonly int confirmMs,dwellMs;
+    internal SceneTracker(int confirmMs=5000,int dwellMs=15000)
+    {
+        if (confirmMs<0 || dwellMs<0) throw new ArgumentOutOfRangeException();
+        this.confirmMs=confirmMs; this.dwellMs=dwellMs;
+    }
     public bool Observe(string scene,long now)
     {
         if (Current == null) { Current = scene; entered = now; return false; }
         if (scene == Current) { pending = null; return false; }
-        if (pending != scene) { pending = scene; pendingSince = now; return false; }
-        if (now - pendingSince < 5000 || now - entered < 15000) return false;
+        if (pending != scene) { pending = scene; pendingSince = now; }
+        if (now - pendingSince < confirmMs || now - entered < dwellMs) return false;
         Current = scene; entered = now; pending = null;
         return true;
     }
@@ -86,26 +92,39 @@ internal sealed class RouteTrust
 
     public static RouteTrust From(IEnumerable<DecisionRecord> rows,string device,string scene,DateTime now)
     {
-        var history = rows.Where(r => !r.Imported && r.DeviceKey == device && r.Scene == scene).ToList();
+        now=now.ToUniversalTime();
+        var history=rows.Where(r=>!r.Imported && r.DeviceKey==device && r.Scene==scene && r.Utc.ToUniversalTime()<=now)
+            .OrderBy(r=>r.Utc.ToUniversalTime()).ToList();
         var corrections = history.Where(r => (r.Result == "undone" || r.Result == "corrected") && r.Related != null)
             .ToLookup(r => r.Related);
         var trust = new RouteTrust();
+        double preference=0;
+        DateTime previous=history.Count==0 ? now : history[0].Utc.ToUniversalTime();
         foreach (var r in history)
         {
+            DateTime time=r.Utc.ToUniversalTime();
+            preference=Decay(preference,previous,time);
+            previous=time;
             if (r.Result == "undone" || r.Result == "corrected")
             {
                 trust.Level = Math.Max(0,trust.Level - 1); trust.Streak = 0;
-                trust.Preference = Math.Max(-24,trust.Preference - 12);
+                preference=Math.Max(-24,preference-12);
             }
             else if ((r.Result == "applied" || r.Result == "manual") &&
-                !corrections[r.Id].Any(c => (c.Utc - r.Utc).TotalSeconds < 30) &&
-                now - r.Utc.ToUniversalTime() >= TimeSpan.FromSeconds(30))
+                !corrections[r.Id].Any(c => c.Utc.ToUniversalTime()>=time && (c.Utc.ToUniversalTime()-time).TotalSeconds<30) &&
+                now-time >= TimeSpan.FromSeconds(30))
             {
-                trust.Preference = Math.Min(24,trust.Preference + (r.Result == "manual" ? 8 : 3));
+                preference=Math.Min(24,preference+(r.Result=="manual" ? 8 : 3));
                 if (++trust.Streak >= 3) { trust.Level = Math.Min(3,trust.Level + 1); trust.Streak = 0; }
             }
         }
+        trust.Preference=(int)Math.Round(Decay(preference,previous,now));
         return trust;
+    }
+    static double Decay(double score,DateTime from,DateTime until)
+    {
+        const double halfLifeDays=14;
+        return score*Math.Pow(.5,(until-from).TotalDays/halfLifeDays);
     }
 }
 
