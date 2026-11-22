@@ -69,30 +69,38 @@ internal sealed class ApoBridge
             !System.Text.RegularExpressions.Regex.IsMatch(e.Guid??"",@"\A[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\z")))
             throw new InvalidDataException("DeskAudio 的 EQ 备份无效");
     }
-    State Load(byte[] current)
+    State Load(byte[] current,out Entry[] owned)
     {
+        owned=new Entry[0];
         if (!File.Exists(statePath)) return new State { Original=current,OriginalHash=Hash(current),Active=new Entry[0] };
         var s=JsonFile.Read<State>(statePath);
         if (s==null || s.Original==null || Hash(s.Original)!=s.OriginalHash) throw new InvalidDataException("原始 EQ 备份损坏");
         Validate(s.Active);
+        owned=s.Active;
         if (s.Pending!=null) {
             Validate(s.Pending);
+            owned=s.Active.Concat(s.Pending).ToArray();
             if (Config(s.Original,s.Pending).SequenceEqual(current)) s.Active=s.Pending;
         }
         if (!Config(s.Original,s.Active).SequenceEqual(current)) throw new IOException("APO 主配置已由其他程序修改，已保留现场与备份");
         return s;
     }
-    internal string Applied(string endpoint)
+    internal string Applied(string endpoint,out bool managed)
     {
+        managed=false;
+        bool found=false;
         if (!File.Exists(main) || !File.Exists(statePath)) return null;
-        return JsonFile.Locked(main,delegate {
-            var entry=Load(File.ReadAllBytes(main)).Active.FirstOrDefault(e=>e.Guid==EndpointGuid(endpoint));
+        string result=JsonFile.Locked(main,delegate {
+            Entry[] owned;
+            var entry=Load(File.ReadAllBytes(main),out owned).Active.FirstOrDefault(e=>e.Guid==EndpointGuid(endpoint));
             if (entry==null) return null;
+            found=true;
             string path=Path.Combine(folder,Fragment(entry));
             if (!File.Exists(path)) return null;
             if (Hash(File.ReadAllBytes(path))!=entry.Hash) throw new IOException("DeskAudio 的 EQ 文件已被外部修改");
             return entry.Model+" · "+entry.Strength+"%";
         });
+        managed=found; return result;
     }
     internal void Change(string endpoint,EqPlan plan,Action guard)
     {
@@ -102,8 +110,8 @@ internal sealed class ApoBridge
             if (!File.Exists(main)) throw new FileNotFoundException("未找到 Equalizer APO 的主配置");
             if (new FileInfo(main).Length>1024*1024) throw new IOException("APO 主配置超过可备份的大小");
             var current=File.ReadAllBytes(main);
-            var s=Load(current);
-            var previous=s.Active.Concat(s.Pending??new Entry[0]).ToArray();
+            Entry[] previous;
+            var s=Load(current,out previous);
             var entries=s.Active.Where(e=>e.Guid!=id).ToList();
             Entry next=null;
             byte[] body=null;

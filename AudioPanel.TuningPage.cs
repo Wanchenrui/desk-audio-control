@@ -33,6 +33,7 @@ internal sealed partial class AudioPanel
     EqCandidate[] suggested=new EqCandidate[0];
     string eqMatchReason,apoApplied,apoError;
     ApoBridge apo;
+    bool apoManaged;
     int tuneTab;
     Panel tunePage;
     bool filling;
@@ -264,7 +265,7 @@ internal sealed partial class AudioPanel
         listenA.Enabled=listenB.Enabled=idle && eqPlan!=null && output!=null && apoApplied==null && apoError==null;
         exportEq.Enabled=eqPlan!=null;
         applyEq.Enabled=idle && eqPlan!=null && apo!=null && apoError==null && output!=null && output.Port.MixRate>0;
-        restoreEq.Enabled=idle && apo!=null && apoError==null && apoApplied!=null;
+        restoreEq.Enabled=idle && apo!=null && apoError==null && apoManaged;
         bool matches=eqPlan!=null && apoApplied==eqPlan.Filter.Model+" · "+eqPlan.Strength+"%";
         measureEq.Enabled=idle && output!=null && apo!=null && apoError==null && supported &&
             (apoApplied==null || (matches && dryBands!=null && dryEndpoint==output.Port.Id));
@@ -312,10 +313,10 @@ internal sealed partial class AudioPanel
     }
     void ReadApoStatus()
     {
-        apoApplied=null; apoError=null;
+        apoApplied=null; apoError=null; apoManaged=false;
         try {
             apo=ApoBridge.Detect();
-            if (apo!=null && TuneOut!=null) apoApplied=apo.Applied(TuneOut.Port.Id);
+            if (apo!=null && TuneOut!=null) apoApplied=apo.Applied(TuneOut.Port.Id,out apoManaged);
         } catch (Exception error) { apoError=error.Message; }
     }
     void ChangeEq(bool apply)
