@@ -29,6 +29,7 @@ internal sealed partial class AudioPanel
         public long AppliedAt;
         public string[] Roles = { "old-console", "old-music", "old-call" };
         public string[] MicRoles = { null,null,null };
+        public override List<SmartGroup> ScanChanged(string[] changed) { return Scan(); }
         public override List<SmartGroup> Scan()
         {
             Interlocked.Increment(ref Scans);

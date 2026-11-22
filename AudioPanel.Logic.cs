@@ -146,10 +146,10 @@ internal sealed partial class AudioPanel
         public SceneSignals Signals;
         public long ScanStart,ScanEnd;
     }
-    Snapshot TakeSnapshot()
+    Snapshot TakeSnapshot(string[] changed=null)
     {
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
-        var snap = new Snapshot { ScanStart = start, Groups = audio.Scan(), Outputs = audio.Outputs(), Inputs = audio.Inputs() };
+        var snap = new Snapshot { ScanStart = start, Groups = changed==null ? audio.Scan() : audio.ScanChanged(changed), Outputs = audio.Outputs(), Inputs = audio.Inputs() };
         snap.Signals = audio.Context(snap.Groups,snap.Outputs);
         snap.ScanEnd = System.Diagnostics.Stopwatch.GetTimestamp();
         return snap;

@@ -11,9 +11,11 @@ internal sealed class AudioEventBus
     readonly object sync = new object();
     ScanReason pending;
     long firstTick;
+    readonly HashSet<string> dirty=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    bool full;
     public event Action Wake;
 
-    public void Publish(ScanReason reason)
+    public void Publish(ScanReason reason,string endpoint=null)
     {
         bool notify;
         lock (sync)
@@ -21,6 +23,8 @@ internal sealed class AudioEventBus
             notify = pending == ScanReason.None;
             if (notify) firstTick = Stopwatch.GetTimestamp();
             pending |= reason;
+            if (endpoint==null || dirty.Count>=256) full=true;
+            else if (!full) dirty.Add(endpoint);
         }
         var wake = Wake;
         if (notify && wake != null) wake();
@@ -28,7 +32,16 @@ internal sealed class AudioEventBus
 
     public ScanReason Drain(out long since)
     {
-        lock (sync) { since = firstTick; var result = pending; pending = ScanReason.None; return result; }
+        string[] ids; return Drain(out since,out ids);
+    }
+    public ScanReason Drain(out long since,out string[] ids)
+    {
+        lock (sync) {
+            since=firstTick; var result=pending;
+            ids=full ? null : dirty.ToArray();
+            pending=ScanReason.None; dirty.Clear(); full=false;
+            return result;
+        }
     }
 }
 

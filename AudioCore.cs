@@ -10,6 +10,7 @@ public sealed class AudioItem
     internal bool ParentPresent;
     internal bool? JackConnected, LinkConnected;
     internal PresenceResult Presence;
+    internal AudioItem Copy() { return (AudioItem)MemberwiseClone(); }
 }
 
 public static class AudioCore
@@ -178,6 +179,18 @@ public static class AudioCore
             return (ushort)Marshal.ReadInt16(value.Extra,2);
         }
         finally { PropVariantClear(ref value); }
+    }
+    internal static AudioItem ReadActive(string id)
+    {
+        var en=(IEnum)new MMEnumerator(); IDevice dev=null;
+        try {
+            en.GetDevice(id,out dev);
+            uint state; dev.GetState(out state);
+            if (state!=Active) return null;
+            int flow; ((IEndpoint)dev).GetDataFlow(out flow);
+            return Describe(dev,flow);
+        } catch (COMException error) { if (error.ErrorCode==NotFound) return null; throw; }
+        finally { Release(dev); Release(en); }
     }
     public static List<AudioItem> List(int flow)
     {

@@ -24,6 +24,12 @@ internal static class FoundationTest
         bus.Publish(ScanReason.Default);
         Check(wakes == 2 && bus.Drain(out since) == ScanReason.Default, "rearm after draining");
 
+        string[] dirty;
+        bus.Publish(ScanReason.State,"usb"); bus.Publish(ScanReason.Property,"USB");
+        bus.Drain(out since,out dirty);
+        Check(dirty.Length==1,"dirty endpoints deduplicate across a burst");
+        bus.Publish(ScanReason.Poll); bus.Drain(out since,out dirty);
+        Check(dirty==null,"periodic scan fully reconciles missed notifications");
         var arrivals = new OutputArrivals();
         Check(arrivals.Observe(new[] { "speaker" }).Length == 0, "startup establishes baseline");
         gate.Request(1000);

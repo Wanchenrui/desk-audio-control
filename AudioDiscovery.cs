@@ -27,6 +27,10 @@ public static class AudioDiscovery
         public string Parent, Container, UsbDevice, Serial, Adapter, BluetoothAddress;
         public bool? Sensed;
         public int Form;
+        public Evidence Snapshot()
+        {
+            var copy=(Evidence)MemberwiseClone(); copy.Item=Item.Copy(); return copy;
+        }
     }
 
     private static readonly StringComparer Compare = StringComparer.OrdinalIgnoreCase;
@@ -267,9 +271,42 @@ public static class AudioDiscovery
 
     public static List<SmartGroup> Scan()
     {
-        var devices = AudioCore.List(0);
-        devices.AddRange(AudioCore.List(1));
-        var evidence = devices.Select(Describe).ToList();
+        return new Cache().Read(null);
+    }
+
+    internal sealed class Cache
+    {
+        readonly object sync=new object();
+        Dictionary<string,Evidence> rows;
+        public List<SmartGroup> Read(string[] changed)
+        {
+            lock (sync) {
+                Dictionary<string,Evidence> next;
+                if (changed==null || rows==null) {
+                    var devices=AudioCore.List(0); devices.AddRange(AudioCore.List(1));
+                    next=devices.Select(Describe).ToDictionary(r=>r.Item.Id,Compare);
+                } else {
+                    next=new Dictionary<string,Evidence>(rows,Compare);
+                    var affected=new HashSet<string>(changed,Compare);
+                    // A Bluetooth profile or analog jack can change its siblings' connection evidence.
+                    foreach (string id in changed) {
+                        Evidence old;
+                        if (!rows.TryGetValue(id,out old)) continue;
+                        foreach (var sibling in rows.Values.Where(r=>Compare.Equals(Physical(r),Physical(old))))
+                            affected.Add(sibling.Item.Id);
+                    }
+                    foreach (string id in affected) {
+                        var item=AudioCore.ReadActive(id);
+                        if (item==null) next.Remove(id); else next[id]=Describe(item);
+                    }
+                }
+                var groups=GroupLive(next.Values.Select(r=>r.Snapshot()));
+                rows=next; return groups;
+            }
+        }
+    }
+    static List<SmartGroup> GroupLive(IEnumerable<Evidence> evidence)
+    {
         lock (LiveCollisions)
         {
             if (!historyLoaded)

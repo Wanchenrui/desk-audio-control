@@ -27,6 +27,8 @@ internal sealed partial class AudioPanel : Form
     RouteOverlay overlay;
     const ScanReason Hardware = ScanReason.Added | ScanReason.Removed | ScanReason.State | ScanReason.Property | ScanReason.Default;
     ScanReason pendingReasons;
+    readonly HashSet<string> pendingIds=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    bool fullScan;
     long pendingSince;
     long nextJournalCleanup;
     long actionRevision, quietUntil;
@@ -219,7 +221,9 @@ internal sealed partial class AudioPanel : Form
         scanTimer.Stop();
         long now = clock.ElapsedMilliseconds;
         long since;
-        ScanReason batch = bus.Drain(out since);
+        string[] dirty;
+        ScanReason batch = bus.Drain(out since,out dirty);
+        if (dirty==null) fullScan=true; else pendingIds.UnionWith(dirty);
         if (pendingReasons == ScanReason.None && batch != ScanReason.None) pendingSince = since;
         pendingReasons |= batch;
         if ((batch & Hardware) != 0)
@@ -230,17 +234,21 @@ internal sealed partial class AudioPanel : Form
         {
             var reasons = pendingReasons;
             pendingReasons = ScanReason.None;
-            RunScan(reasons,pendingSince);
+            var ids=fullScan ? null : pendingIds.ToArray();
+            pendingIds.Clear(); fullScan=false;
+            RunScan(reasons,pendingSince,ids);
         }
         else { scanTimer.Interval = gate.Delay(now); scanTimer.Start(); }
     }
 
-    async void RunScan(ScanReason reasons,long since)
+    async void RunScan(ScanReason reasons,long since,string[] ids)
     {
         long revision = actionRevision;
         try
         {
-            var snap = await Task.Run((Func<Snapshot>)TakeSnapshot);
+            long scanStart=Stopwatch.GetTimestamp();
+            var snap = await Task.Run(()=>TakeSnapshot(ids));
+            snap.ScanStart=scanStart;
             if (closing || IsDisposed) return;
             PumpScanner(); // Pick up hardware changes that arrived while Windows was enumerating.
             if ((pendingReasons & Hardware) != 0) { pendingReasons |= reasons; pendingSince = since; }

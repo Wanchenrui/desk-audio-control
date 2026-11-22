@@ -6,7 +6,9 @@ using System.Collections.Generic;
 internal class PanelAudio
 {
     internal Action OutputWritesComplete;
-    public virtual List<SmartGroup> Scan() { return AudioDiscovery.Scan(); }
+    readonly AudioDiscovery.Cache discovery=new AudioDiscovery.Cache();
+    public virtual List<SmartGroup> Scan() { return discovery.Read(null); }
+    public virtual List<SmartGroup> ScanChanged(string[] changed) { return discovery.Read(changed); }
     public virtual string Default(int flow,int role) { return AudioCore.Default(flow,role); }
     public virtual string[] Outputs() { return AudioCore.Defaults(0); }
     public virtual string[] Inputs() { return AudioCore.Defaults(1); }

@@ -25,12 +25,12 @@ public sealed class EndpointEvents : IDisposable
     public sealed class Callback : ICallback
     {
         internal AudioEventBus Bus;
-        int Mark(ScanReason reason) { Bus.Publish(reason); return 0; }
-        public int OnDeviceStateChanged(string id,uint state) { return Mark(ScanReason.State); }
-        public int OnDeviceAdded(string id) { return Mark(ScanReason.Added); }
-        public int OnDeviceRemoved(string id) { return Mark(ScanReason.Removed); }
-        public int OnDefaultDeviceChanged(int flow,int role,string id) { return Mark(ScanReason.Default); }
-        public int OnPropertyValueChanged(string id,PropertyKey key) { return Mark(ScanReason.Property); }
+        int Mark(ScanReason reason,string id) { Bus.Publish(reason,id); return 0; }
+        public int OnDeviceStateChanged(string id,uint state) { return Mark(ScanReason.State,id); }
+        public int OnDeviceAdded(string id) { return Mark(ScanReason.Added,id); }
+        public int OnDeviceRemoved(string id) { return Mark(ScanReason.Removed,id); }
+        public int OnDefaultDeviceChanged(int flow,int role,string id) { return Mark(ScanReason.Default,id); }
+        public int OnPropertyValueChanged(string id,PropertyKey key) { return Mark(ScanReason.Property,id); }
     }
     IEventsSource source;
     readonly Callback sink = new Callback();
