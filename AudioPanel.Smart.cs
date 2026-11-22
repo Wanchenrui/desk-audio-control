@@ -276,6 +276,7 @@ internal sealed partial class AudioPanel
         if (intent.InputAfter != null) { expectedInputs = intent.InputAfter; defaultIn = expectedInputs[1]; }
         quietUntil = clock.ElapsedMilliseconds + 30000;
         var done = DecisionRecord.Create(intent.Source,intent.Candidates,intent.Reason,"applied");
+        if (volumeChange!=null) done.Reason+=" · "+rampPlan.Reason+"，目标 "+rampPlan.Target+"%";
         done.Timing = intent.Timing; done.LatencyMs = intent.Timing.ReadbackMs;
         done.Related = intent.Id; done.Target = intent.Target; done.DeviceKey = intent.DeviceKey; done.Scene = intent.Scene;
         done.Before = intent.Before; done.InputBefore = intent.InputBefore; done.InputAfter = intent.InputAfter; done.Evidence = intent.Evidence;

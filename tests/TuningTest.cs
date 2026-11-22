@@ -24,6 +24,10 @@ internal static class TuningTest
         var anchors=new[]{new GainPoint(20,-32),new GainPoint(40,-16),new GainPoint(100,0)};
         Check(Landing.FromDb(-24,anchors)==30,"interpolate native gain between measured endpoint levels");
         Check(Landing.FromDb(-60,anchors)==20 && Landing.FromDb(8,anchors)==100,"clamp gain outside known range");
+        Check(LevelPlanner.Curve(new[]{new GainPoint(0,-60),new GainPoint(40,0),new GainPoint(100,-5)})==null,"reversed driver curve");
+        var none=new ComfortSample[0];
+        var start=LevelPlanner.Plan(82,18,anchors,anchors,none,none,true,true,DateTime.UtcNow);
+        Check(start.Target<=18 && start.Steps.Last()==start.Target,"cold-start ramp is bounded");
         var folder=Path.Combine(Path.GetTempPath(),"DeskAudio.Tune."+Guid.NewGuid().ToString("N"));
         try {
             var settings=new SettingsFile(folder,()=>new Dictionary<string,string>());

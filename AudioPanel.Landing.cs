@@ -7,7 +7,8 @@ internal sealed partial class AudioPanel
     readonly Timer landingTimer=new Timer { Interval=140 };
     VolumeTuning levels;
     VolumeChange ramp;
-    int rampStart,rampTarget,rampTick;
+    LevelPlan rampPlan;
+    int rampTick;
     bool rampHeadphones;
     bool tuneEnabled=LocalSettings.Get("EnableTuning")=="1";
     string observedPort,learnKey,learnPort;
@@ -57,26 +58,6 @@ internal sealed partial class AudioPanel
         var curve=DeviceGain(id);
         levels.Learn(key,level,curve.Length==3 && curve[1].Level==level ? curve[1].Db : Double.NaN);
     }
-    int MatchedLevel(SmartGroup old,SmartGroup target,string source,string endpoint,int original,bool phones)
-    {
-        int[] history=levels.History(target.Key);
-        int sourceLevel=audio.Level(source);
-        if (sourceLevel==0 || audio.Muted(source)) return 0;
-        var from=old==null ? new GainPoint[0] : levels.Anchors(old.Key);
-        var to=levels.Anchors(target.Key);
-        if (from.Length>0 && to.Length>0) {
-            var sourceCurve=DeviceGain(source); var targetCurve=DeviceGain(endpoint);
-            if (sourceCurve.Length==3 && targetCurve.Length==3) {
-                var a=from.OrderBy(p=>p.Db).ElementAt((from.Length-1)/2);
-                var b=to.OrderBy(p=>p.Db).ElementAt((to.Length-1)/2);
-                double desired=b.Db+sourceCurve[1].Db-a.Db;
-                int matched=Landing.FromDb(desired,targetCurve.Concat(to).ToArray());
-                return phones ? Math.Min(Landing.Ceiling(history),matched) : matched;
-            }
-        }
-        return Landing.Plan(sourceLevel,original,old==null ? new int[0] : levels.History(old.Key),history,phones);
-    }
-
     // Return the durable volume intent to the caller before changing the default roles.
     VolumeChange PrepareLanding(string target,string source,string owner)
     {
@@ -91,13 +72,16 @@ internal sealed partial class AudioPanel
             g.Outputs.Any(p=>Same(p.Id,target) && IsHeadphoneName(p.Name+" "+g.Name));
         int original=audio.Level(target);
         if (original==0) return null;
-        int[] history=levels.History(g.Key);
+        var history=levels.Samples(g.Key);
         if (!phones && history.Length==0 && audio.Level(source)!=0 && !audio.Muted(source)) return null;
-        rampTarget=MatchedLevel(old,g,source,target,original,phones);
-        rampStart=phones ? Math.Min(original,Math.Min(12,rampTarget/3)) : Math.Min(original,rampTarget);
+        int sourceLevel=audio.Muted(source) ? 0 : audio.Level(source);
+        var now=DateTime.UtcNow;
+        rampPlan=LevelPlanner.Plan(sourceLevel,original,DeviceGain(source),DeviceGain(target),
+            old==null ? new ComfortSample[0] : levels.Samples(old.Key),history,phones,
+            LevelPlanner.Night(now.ToLocalTime().Hour),now,ReadNumber("HeadphoneCeiling/"+g.Key,60,1,60));
         rampHeadphones=phones;
-        if (original==rampTarget && !phones) return null;
-        try { return levels.Begin(target,owner,rampStart); }
+        if (original==rampPlan.Target && !phones) return null;
+        try { return levels.Begin(target,owner,rampPlan.Start); }
         catch { RollbackLevel(target,owner); throw; }
     }
     static bool IsHeadphoneName(string text)
@@ -124,8 +108,7 @@ internal sealed partial class AudioPanel
                 StopLanding(); Notify("检测到接近满幅的峰值，已降低耳机音量");
                 Activity("柔着陆",NameFor(tx.Endpoint,0),"切换后检测到高峰值，已降低音量","tuned"); return;
             }
-            if (rampTick<=6)
-                levels.Step(tx,rampStart+(int)Math.Round((rampTarget-rampStart)*rampTick/6.0));
+            if (rampTick<=rampPlan.Steps.Length) levels.Step(tx,rampPlan.Steps[rampTick-1]);
             if (rampTick>=(rampHeadphones ? 18 : 6)) StopLanding();
         } catch (Exception e) { StopLanding(); Fail("淡入已停止 · "+e.Message); }
     }

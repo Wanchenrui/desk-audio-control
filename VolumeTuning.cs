@@ -70,33 +70,41 @@ internal sealed class VolumeTuning
     {
         this.store=store; this.read=read; this.write=write;
     }
-    public int[] History(string group)
+    public ComfortSample[] Samples(string group)
     {
-        string value=store.Get("Comfort/"+group);
-        if (String.IsNullOrEmpty(value)) return new int[0];
-        return value.Split(',').Select(s=>{ int v; return Int32.TryParse(s.Split('@')[0],out v) ? v : -1; })
-            .Where(v=>v>0 && v<=100).Take(16).ToArray();
+        string data=store.Get("Comfort/"+group) ?? "";
+        if (data.StartsWith("v2|",StringComparison.Ordinal)) {
+            var rows=json.Deserialize<ComfortSample[]>(data.Substring(3)) ?? new ComfortSample[0];
+            return rows.Where(s=>s!=null && s.Level>0 && s.Level<=100 &&
+                (!s.Db.HasValue || s.Db>=-200 && s.Db<=50)).Take(16).ToArray();
+        }
+        var legacy=new System.Collections.Generic.List<ComfortSample>();
+        foreach (var entry in data.Split(',')) {
+            var parts=entry.Split('@'); int level; double db;
+            if (!Int32.TryParse(parts[0],out level) || level<=0 || level>100) continue;
+            var sample=new ComfortSample { Level=level };
+            if (parts.Length==2 && Double.TryParse(parts[1],NumberStyles.Float,CultureInfo.InvariantCulture,out db)
+                && db>=-200 && db<=50) sample.Db=db;
+            legacy.Add(sample);
+        }
+        return legacy.Take(16).ToArray();
     }
+    public int[] History(string group) { return Samples(group).Select(s=>s.Level).ToArray(); }
     public GainPoint[] Anchors(string group)
     {
-        var list=new System.Collections.Generic.List<GainPoint>();
-        foreach (var entry in (store.Get("Comfort/"+group)??"").Split(',')) {
-            var parts=entry.Split('@'); int level; double db;
-            if (parts.Length==2 && Int32.TryParse(parts[0],out level) && level>0 && level<=100 &&
-                Double.TryParse(parts[1],NumberStyles.Float,CultureInfo.InvariantCulture,out db) && db>=-200 && db<=50)
-                list.Add(new GainPoint(level,db));
-        }
-        return list.ToArray();
+        return Samples(group).Where(s=>s.Db.HasValue).Select(s=>new GainPoint(s.Level,s.Db.Value)).ToArray();
     }
     public void Learn(string group,int value,double db=Double.NaN)
     {
         if (value<=0 || value>100) return;
-        string entry=value.ToString(CultureInfo.InvariantCulture);
-        if (!Double.IsNaN(db) && !Double.IsInfinity(db)) entry+="@"+db.ToString("R",CultureInfo.InvariantCulture);
+        var now=DateTime.UtcNow;
+        var sample=new ComfortSample { Level=value,Utc=now,Night=LevelPlanner.Night(now.ToLocalTime().Hour) };
+        if (db>=-200 && db<=50) sample.Db=db;
         store.WithFreshValues(delegate {
-            var samples=(store.Get("Comfort/"+group)??"").Split(new[]{','},StringSplitOptions.RemoveEmptyEntries).Concat(new[]{entry}).ToList();
-            if (samples.Count>16) samples.RemoveAt(0);
-            store.Put("Comfort/"+group,String.Join(",",samples)); return true;
+            var rows=Samples(group).ToList();
+            rows.Add(sample);
+            store.Put("Comfort/"+group,"v2|"+json.Serialize(rows.Skip(Math.Max(0,rows.Count-16)).ToArray()));
+            return true;
         });
     }
     public void Forget(string group) { store.Put("Comfort/"+group,null); }
