@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $sources = @(
+    (Join-Path $project 'ApoBridge.cs')
     (Join-Path $project 'EqPlanner.cs')
     (Join-Path $project 'EqMatcher.cs')
     (Join-Path $project 'MicAdvisor.cs')

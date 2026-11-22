@@ -81,6 +81,23 @@ internal static class TuningTest
         Check(flat.Filter.Preamp==0 && flat.Filter.Rows.All(r=>r.Gain==0),"zero strength is flat");
         var half=EqPlanner.Plan(hd,50,48000);
         Check(half.HeadroomDb>=0 && Math.Abs(half.Filter.Rows[0].Gain-hd.Rows[0].Gain/2)<.001,"scaled filters retain headroom");
+        string apoDir=Path.Combine(Path.GetTempPath(),"DeskAudio.Apo."+Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(apoDir);
+        try {
+            string main=Path.Combine(apoDir,"config.txt"), endpoint="{0.0.0.00000000}.{00000000-0000-4000-a000-000000000123}";
+            byte[] original={35,32,65,10};
+            File.WriteAllBytes(main,original);
+            var bridge=new ApoBridge(apoDir);
+            bridge.Change(endpoint,half,delegate {});
+            Check(File.ReadAllText(main).Contains("Device: 00000000-0000-4000-a000-000000000123"),"scope APO to endpoint");
+            bridge.Change(endpoint,null,delegate {});
+            Check(File.ReadAllBytes(main).SequenceEqual(original),"byte-identical APO restore");
+            bridge.Change(endpoint,half,delegate {});
+            File.AppendAllText(main,"# external");
+            bool refused=false;
+            try { bridge.Change(endpoint,null,delegate {}); } catch (IOException) { refused=true; }
+            Check(refused && File.ReadAllText(main).EndsWith("# external"),"preserve newer user edits");
+        } finally { Directory.Delete(apoDir,true); }
         var a=hd.Preview(false); var b=hd.Preview(true);
         Check(a.Length==b.Length && !a.SequenceEqual(b),"A/B uses actual filter");
         Check(a.SequenceEqual(EqPreset.Reference()),"comfort reference is the flat A sample");
