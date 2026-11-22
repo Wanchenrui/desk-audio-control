@@ -1,16 +1,17 @@
 using System;
 
-// Hann-windowed 50 ms frames. Keep 24 logarithmic band energies and a zero-crossing
-// rate; the FFT work arrays are cleared after each frame.
+// One analyzer per stream. Each Hann-windowed 50 ms frame overwrites the FFT workspace.
 internal sealed class MicSpectrum
 {
     const int Bands=24;
-    readonly int N;
+    readonly int N,rate;
+    internal int ToneHz { get; private set; }
     readonly double[] real,imag,window;
     readonly int[] band;
     internal readonly double[] Centers=new double[Bands];
     internal MicSpectrum(int rate=MicAnalysis.Rate)
     {
+        this.rate=rate;
         window=new double[rate/20];
         int size=1;
         while (size<window.Length) size*=2;
@@ -20,9 +21,11 @@ internal sealed class MicSpectrum
         for (int k=1;k<band.Length;k++) band[k]=Math.Min(Bands-1,Math.Max(0,(int)(Bands*Math.Log(k*rate/(N*30.0))/ratio)));
         for (int i=0;i<window.Length;i++) window[i]=.5-.5*Math.Cos(2*Math.PI*i/(window.Length-1));
     }
+    double BinPower(int k) { return real[k]*real[k]+imag[k]*imag[k]; }
     internal double[] Energy(short[] samples)
     {
         var energy=new double[Bands];
+        Array.Clear(imag,0,N);
         for (int i=0,j=0;i<N;i++) {
             real[j]=i<samples.Length ? samples[i]*window[i]/32768.0 : 0;
             int bit=N>>1;
@@ -42,8 +45,16 @@ internal sealed class MicSpectrum
                 }
             }
         }
-        for (int k=1;k<band.Length;k++) energy[band[k]]+=real[k]*real[k]+imag[k]*imag[k];
-        Array.Clear(real,0,N); Array.Clear(imag,0,N);
+        int peak=1;
+        double total=0,maximum=0;
+        for (int k=1;k<band.Length;k++) {
+            double power=BinPower(k);
+            energy[band[k]]+=power; total+=power;
+            if (power>maximum) { maximum=power; peak=k; }
+        }
+        int hz=(int)Math.Round(peak*(double)rate/N);
+        ToneHz=hz>=400 && hz<=2000 && peak+1<band.Length &&
+            BinPower(peak-1)+maximum+BinPower(peak+1)>.6*total ? hz : 0;
         return energy;
     }
 }

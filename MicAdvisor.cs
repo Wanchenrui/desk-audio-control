@@ -7,7 +7,7 @@ internal static class MicAdvisor
     public static double Adjustment(MicReport r)
     {
         if (r.Clipping) return -Math.Min(6,Math.Max(3,r.PeakDb+6));
-        if (r.NoSpeech || r.QuietContaminated || r.Silent || r.Noisy || r.HumHz!=0 || r.EchoRisk ||
+        if (r.NoSpeech || r.QuietContaminated || r.Silent || r.Noisy || r.HumHz!=0 || r.ToneHz!=0 || r.EchoRisk ||
             r.Rumble || r.Hiss || r.SpeechDb-r.NoiseDb<8) return 0;
         if (r.SpeechDb < -24) return Math.Max(0,Math.Min(6,Math.Min(-20-r.SpeechDb,-3-r.PeakDb)));
         if (r.SpeechDb > -16) return Math.Max(-6,-20-r.SpeechDb);

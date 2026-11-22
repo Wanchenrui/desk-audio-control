@@ -86,6 +86,17 @@ internal static class TuningTest
         var harmonic=AnalyzeFrames((n,t)=>n<30 ? .03*Math.Sin(2*Math.PI*60*t)+.05*Math.Sin(2*Math.PI*120*t) :
             .2*Math.Sin(2*Math.PI*400*t));
         Check(harmonic.HumHz==60,"identify harmonic-rich mains hum");
+        var tone=AnalyzeFrames((n,t)=>.04*Math.Sin(2*Math.PI*950*t));
+        Check(Math.Abs(tone.ToneHz-950)<20 && tone.GainDb==0,"stable midrange tone");
+        Check(AnalyzeFrames((n,t)=>.04*Math.Sin(2*Math.PI*(n%2==0 ? 800 : 1250)*t)).ToneHz==0,"alternating tones are not stationary");
+        var noise=new Random(42);
+        Check(AnalyzeFrames((n,t)=>.08*(noise.NextDouble()*2-1)).HumHz==0,"broadband noise without mains energy");
+        var mixed=AnalyzeFrames((n,t)=>.03*Math.Sin(2*Math.PI*50*t)+.08*(noise.NextDouble()*2-1));
+        Check(mixed.HumHz==50,"mains line retained with broadband noise");
+        Check(AnalyzeFrames((n,t)=>n<10 ? .08*Math.Sin(2*Math.PI*50*t) : 0).HumHz==0,"one brief hum window");
+        var envelope=Enumerable.Range(0,MicAnalysis.TotalBlocks).Select(n=>(float)(.05+.4*noise.NextDouble())).ToArray();
+        var echo=AnalyzeFrames((n,t)=>n<10 ? 0 : envelope[n-10]*Math.Sin(2*Math.PI*750*t),n=>envelope[n]);
+        Check(echo.EchoRisk && echo.EchoDelayMs==500,"delayed render correlation at the edge of the search");
         Check(AnalyzeFrames((n,t)=>.08*Math.Sin(2*Math.PI*35*t)).Rumble,"low-frequency rumble");
         Check(AnalyzeFrames((n,t)=>.08*Math.Sin(2*Math.PI*9000*t)).Hiss,"high-frequency noise");
         Check(AnalyzeFrames((n,t)=>n<30 ? 0 : .08*Math.Sin(2*Math.PI*400*t)+.05*Math.Sin(2*Math.PI*2200*t)).NarrowBand,
@@ -140,7 +151,7 @@ internal static class TuningTest
         Console.WriteLine(count+" P3 tuning checks passed.");
     }
 
-    static MicReport AnalyzeFrames(Func<int,double,double> signal)
+    static MicReport AnalyzeFrames(Func<int,double,double> signal,Func<int,float> playback=null)
     {
         var analysis=new MicAnalysis();
         for (int n=0;n<MicAnalysis.TotalBlocks;n++) {
@@ -149,7 +160,7 @@ internal static class TuningTest
                 double x=signal(n,(n*frame.Length+i)/(double)MicAnalysis.Rate);
                 frame[i]=(short)(Math.Max(-1,Math.Min(1,x))*32767);
             }
-            analysis.Add(frame,0);
+            analysis.Add(frame,playback==null ? 0 : playback(n));
         }
         return analysis.Finish();
     }
