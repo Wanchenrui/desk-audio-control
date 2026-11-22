@@ -19,7 +19,7 @@ internal sealed partial class AudioPanel
     readonly Card[] tuneCards=new Card[3];
     readonly ComboBox outputBox=new ComboBox(), inputBox=new ComboBox(), modelBox=new ComboBox();
     Caption tuningTitle,portLabel,tuneFeedback,comfortState,doctorText,modelStatus;
-    PillButton referenceButton,learnButton,forgetButton,restoreOutput,diagnoseButton,repairButton,restoreInput,listenA,listenB,exportEq,stopAudio;
+    PillButton referenceButton,learnButton,forgetButton,restoreOutput,diagnoseButton,repairButton,restoreInput,listenA,listenB,exportEq,stopAudio,pickModel;
     ToggleSwitch enableLanding;
     TextBox filterList;
     int tuneTab;
@@ -90,7 +90,8 @@ internal sealed partial class AudioPanel
 
         var eq=tuneCards[2];
         modelStatus=Cap(eq,"",9f,false,Tone.Muted); modelStatus.Wrap=true;
-        AddBox(eq,modelBox,"测量预设型号");
+        AddBox(eq,modelBox,"测量预设型号"); modelBox.Visible=false; // Keeps the selection; ModelPicker is what the user sees.
+        pickModel=TuneButton(eq,"选择实物型号…",ChooseModel);
         presets=EqPreset.Load();
         modelBox.Items.Add("选择实物型号…"); modelBox.Items.AddRange(presets);
         modelBox.SelectedIndexChanged+=delegate {
@@ -140,7 +141,7 @@ internal sealed partial class AudioPanel
         doctorText.SetBounds(m,P(24),iw,P(172));
         diagnoseButton.SetBounds(m,P(207),P(140),P(36)); repairButton.SetBounds(m+P(150),P(207),P(164),P(36));
         restoreInput.SetBounds(m+P(324),P(207),P(136),P(36));
-        modelStatus.SetBounds(m,P(6),iw,P(40)); modelBox.SetBounds(m,P(48),iw,P(32));
+        modelStatus.SetBounds(m,P(6),iw,P(40)); pickModel.SetBounds(m,P(48),iw,P(32));
         filterList.SetBounds(m,P(84),iw,P(120));
         listenA.SetBounds(m,P(219),P(132),P(36)); listenB.SetBounds(m+P(142),P(219),P(132),P(36));
         exportEq.SetBounds(m+P(284),P(219),P(132),P(36));
@@ -202,6 +203,9 @@ internal sealed partial class AudioPanel
         restoreInput.Enabled=idle && input!=null && levels.Saved(input.Port.Id)!=null;
         listenA.Enabled=listenB.Enabled=idle && Preset!=null && output!=null;
         exportEq.Enabled=Preset!=null;
+        pickModel.Enabled=idle;
+        pickModel.Text=Preset==null ? "选择实物型号…" : Preset.Model+" · 更换…";
+        pickModel.AccessibleName=Preset==null ? "选择实物型号" : "已选型号 "+Preset.Model+"，点击更换";
         string details=Preset==null ? "" : Preset.Parameters;
         if (filterList.Text!=details) filterList.Text=details;
         modelStatus.Text=Preset==null ? "未匹配到测量数据。可从列表选择实物型号。" :
@@ -264,6 +268,15 @@ internal sealed partial class AudioPanel
         } catch (OperationCanceledException) { if (!IsDisposed) TuneMessage("已停止"); }
         catch (Exception e) { if (!IsDisposed) TuneMessage("未完成 · "+e.Message,true); }
         finally { tuningJob=null; job.Dispose(); if (!IsDisposed) { quietUntil=clock.ElapsedMilliseconds+30000; RefreshTuneActions(); } }
+    }
+    void ChooseModel()
+    {
+        using (var picker=new ModelPicker(presets,Preset)) {
+            if (picker.ShowDialog(this)!=DialogResult.OK) return;
+            CancelTuningJob();
+            // The hidden box still owns the selection, so saving and matching run through its handler.
+            modelBox.SelectedIndex=picker.Cleared || picker.Picked==null ? 0 : Array.IndexOf(presets,picker.Picked)+1;
+        }
     }
     void ExportPreset()
     {

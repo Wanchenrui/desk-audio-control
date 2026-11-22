@@ -231,6 +231,11 @@ internal sealed partial class AudioPanel
             Update();
             using (var bmp=new Bitmap(Width,Height)) { DrawToBitmap(bmp,new Rectangle(0,0,Width,Height)); bmp.Save(Path.Combine(folder,"tuning-"+i+".png")); }
         }
+        using (var picker = new ModelPicker(presets, presets.First(p => p.Model == "Sony WH-1000XM4")))
+        {
+            picker.Show(this); Update(); Application.DoEvents();
+            using (var bmp = new Bitmap(picker.Width, picker.Height)) { picker.DrawToBitmap(bmp, new Rectangle(0, 0, picker.Width, picker.Height)); bmp.Save(Path.Combine(folder, "picker.png")); }
+        }
         using (var capture = new System.Windows.Forms.Timer { Interval = 180 })
         {
             capture.Tick += delegate {
