@@ -234,7 +234,7 @@ internal sealed partial class AudioPanel : Form
         BackColor = Theme.Window; ForeColor = Theme.Ink;
         foreach (var page in pages) page.BackColor = Theme.Window;
         devices.BackColor = Theme.Window;
-        filterList.BackColor=Theme.Surface; filterList.ForeColor=Theme.Ink;
+        filterList.ForeColor=Theme.Ink; filterList.Restyle();
         Chrome(); Invalidate(true);
     }
     void Chrome()

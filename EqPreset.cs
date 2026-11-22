@@ -17,6 +17,16 @@ internal sealed class EqPreset
     string parameters;
     double preamp;
     readonly List<Band> bands=new List<Band>();
+    readonly List<EqRow> rows=new List<EqRow>();
+    // The filters as published, for display. The biquad coefficients stay private.
+    public double Preamp { get { return preamp; } }
+    public IList<EqRow> Rows { get { return rows.AsReadOnly(); } }
+    public sealed class EqRow
+    {
+        public readonly string Type;
+        public readonly double Hz,Gain,Q;
+        public EqRow(string type,double hz,double gain,double q) { Type=type; Hz=hz; Gain=gain; Q=q; }
+    }
     static string Resource(string name)
     {
         using (var file=typeof(EqPreset).Assembly.GetManifestResourceStream(name))
@@ -34,6 +44,7 @@ internal sealed class EqPreset
             foreach (var row in body.Skip(1)) {
                 var parts=row.Split(' ');
                 item.bands.Add(new Band(parts[3],Number(parts[5]),Number(parts[8]),Number(parts[11])));
+                item.rows.Add(new EqRow(parts[3],Number(parts[5]),Number(parts[8]),Number(parts[11])));
             }
             list.Add(item);
         }

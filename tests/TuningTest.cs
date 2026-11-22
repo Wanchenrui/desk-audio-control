@@ -76,6 +76,7 @@ internal static class TuningTest
         Check(inEar.Source.Contains("/in-ear/") && inEar.Export().Contains("/in-ear/"),"in-ear source link follows its category");
         Check(catalog.Select(p=>p.Model).Distinct(StringComparer.OrdinalIgnoreCase).Count()==catalog.Length,"model names are unique");
         Check(a.Max(v=>Math.Abs((int)v))<4000 && b.Max(v=>Math.Abs((int)v))<4000,"bounded audition");
+        Check(catalog.All(p=>p.Rows.Count>=10 && p.Rows.All(r=>r.Hz>0 && r.Q>0 && (r.Type=="PK" || r.Type=="LSC" || r.Type=="HSC"))),"filter rows are exposed for display");
         Console.WriteLine(count+" P3 tuning checks passed.");
     }
 

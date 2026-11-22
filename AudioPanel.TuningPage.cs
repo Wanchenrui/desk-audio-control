@@ -21,8 +21,9 @@ internal sealed partial class AudioPanel
     Caption tuningTitle,portLabel,tuneFeedback,comfortState,doctorText,modelStatus;
     PillButton referenceButton,learnButton,forgetButton,restoreOutput,diagnoseButton,repairButton,restoreInput,listenA,listenB,exportEq,stopAudio,pickModel,portButton;
     ToggleSwitch enableLanding;
-    TextBox filterList;
+    EqTable filterList;
     int tuneTab;
+    Panel tunePage;
     bool filling;
     EqPreset[] presets;
     MicReport diagnosis;
@@ -53,7 +54,7 @@ internal sealed partial class AudioPanel
     }
     void BuildTuning(Panel page)
     {
-        page.AutoScroll=true;
+        tunePage=page; page.AutoScroll=true;
         tuningTitle=Cap(page,"声音调优",14f,true,Tone.Ink);
         for(int i=0;i<3;i++) {
             int tab=i; tuningNav[i]=TuneButton(page,tuningTabs[i],()=>SelectTuneTab(tab));
@@ -105,8 +106,7 @@ internal sealed partial class AudioPanel
             } catch (Exception error) { TuneMessage(error.Message,true); }
             RefreshTuneActions();
         };
-        filterList=new TextBox { Multiline=true,ReadOnly=true,ScrollBars=ScrollBars.Vertical,
-            AccessibleName="参数均衡器推荐",Font=Theme.Face(9f),BackColor=Theme.Surface,ForeColor=Theme.Ink };
+        filterList=new EqTable();
         eq.Controls.Add(filterList);
         listenA=TuneButton(eq,"试听 A · 原声",()=>StartTuningJob(false,false));
         listenB=TuneButton(eq,"试听 B · EQ",()=>StartTuningJob(false,true));
@@ -119,7 +119,7 @@ internal sealed partial class AudioPanel
     void SelectTuneTab(int tab)
     {
         if (tuneTab!=tab) CancelTuningJob();
-        tuneTab=tab;
+        tuneTab=tab; if (tunePage!=null) LayoutTuning(tunePage);
         for(int i=0;i<3;i++) { tuneCards[i].Visible=i==tab; tuningNav[i].On=i==tab; }
         portLabel.Text=tab==1 ? "录音设备" : "播放设备";
         TuneMessage(""); RefreshTuneActions();
@@ -135,7 +135,8 @@ internal sealed partial class AudioPanel
         portLabel.SetBounds(x,y+P(120),P(84),P(30));
         foreach(var box in new[]{outputBox,inputBox}) box.SetBounds(x+P(88),y+P(120),w-P(88),P(32));
         portButton.SetBounds(x+P(88),y+P(120),w-P(88),P(32));
-        foreach(var card in tuneCards) card.SetBounds(x,y+P(166),w,P(274));
+        int tableH=filterList.Wanted(10), eqH=P(84)+tableH+P(12)+P(36)+P(18);
+        for(int i=0;i<3;i++) tuneCards[i].SetBounds(x,y+P(166),w,i==2 ? eqH : P(274));
         int iw=w-2*m;
         enableLanding.SetBounds(m,P(16),iw,P(36)); comfortState.SetBounds(m,P(64),iw,P(110));
         var actions=new[]{referenceButton,learnButton,forgetButton,restoreOutput};
@@ -145,11 +146,13 @@ internal sealed partial class AudioPanel
         diagnoseButton.SetBounds(m,P(207),P(140),P(36)); repairButton.SetBounds(m+P(150),P(207),P(164),P(36));
         restoreInput.SetBounds(m+P(324),P(207),P(136),P(36));
         modelStatus.SetBounds(m,P(6),iw,P(40)); pickModel.SetBounds(m,P(48),iw,P(32));
-        filterList.SetBounds(m,P(84),iw,P(120));
-        listenA.SetBounds(m,P(219),P(132),P(36)); listenB.SetBounds(m+P(142),P(219),P(132),P(36));
-        exportEq.SetBounds(m+P(284),P(219),P(132),P(36));
-        tuneFeedback.SetBounds(x,y+P(447),w-P(100),P(56));
-        stopAudio.SetBounds(x+w-P(86),y+P(456),P(86),P(34));
+        filterList.SetBounds(m,P(84),iw,tableH);
+        int by=P(84)+tableH+P(12);
+        listenA.SetBounds(m,by,P(132),P(36)); listenB.SetBounds(m+P(142),by,P(132),P(36));
+        exportEq.SetBounds(m+P(284),by,P(132),P(36));
+        int below=y+P(166)+(tuneTab==2 ? eqH : P(274))+P(7);
+        tuneFeedback.SetBounds(x,below,w-P(100),tuneTab==2 ? P(40) : P(56));
+        stopAudio.SetBounds(x+w-P(86),below+P(9),P(86),P(34));
     }
     void RefreshTuningPage()
     {
@@ -213,8 +216,7 @@ internal sealed partial class AudioPanel
         pickModel.Enabled=idle;
         pickModel.Text=Preset==null ? "选择实物型号…" : Preset.Model+" · 更换…";
         pickModel.AccessibleName=Preset==null ? "选择实物型号" : "已选型号 "+Preset.Model+"，点击更换";
-        string details=Preset==null ? "" : Preset.Parameters;
-        if (filterList.Text!=details) filterList.Text=details;
+        filterList.Bind(Preset);
         modelStatus.Text=Preset==null ? "未匹配到测量数据。可从列表选择实物型号。" :
             "oratory1990 测量 · AutoEq 参数　|　A/B 在所选端口播放 2 秒测试音";
     }
