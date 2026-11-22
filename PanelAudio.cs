@@ -25,13 +25,11 @@ internal class PanelAudio
     public virtual float Peak(string id) { return AudioCore.Peak(id); }
     public virtual string TuningGuard()
     {
-        try { return SceneContext.Read(AudioCore.List(1),AudioCore.List(0),Outputs(),true).Guard(); }
-        catch (Exception) { return "无法确认设备占用"; }
+        return SceneContext.ReadLive(Outputs,true).Guard();
     }
     public virtual SwitchGuard RouteGuard(string[] roles)
     {
-        try { return SwitchGuard.Evaluate(SceneContext.Read(AudioCore.List(1),AudioCore.List(0),roles)); }
-        catch (Exception) { return SwitchGuard.Evaluate(new SceneSignals { Unknown=true }); }
+        return SwitchGuard.Evaluate(SceneContext.ReadLive(()=>roles,false));
     }
 
     public void RoutePair(string[] outputs,string[] before,string[] inputs,string[] beforeInputs)

@@ -197,7 +197,7 @@ internal sealed partial class AudioPanel
                 if (Visible && rail.Index != 0) tray.ShowBalloonTip(3500,"桌面音频",text,System.Windows.Forms.ToolTipIcon.Info);
                 return;
             }
-            ExecuteRoute(row,since);
+            ExecuteRoute(row,snap.Inputs,since);
         }
         catch (Exception e) { Fail("智能切换 · " + e.Message); }
     }
@@ -230,15 +230,15 @@ internal sealed partial class AudioPanel
             journal.Add(row); throw new InvalidOperationException(mismatch);
         }
         row.Result = "prepared";
-        ExecuteRoute(row,since);
+        ExecuteRoute(row,snap.Inputs,since);
     }
-    bool CheckIntent(DecisionRecord intent,bool confirmed,VolumeChange landing)
+    bool CheckIntent(DecisionRecord intent,string[] inputRoles,bool confirmed,VolumeChange landing)
     {
         var roles=audio.Outputs();
         var guard=audio.RouteGuard(roles);
         string code=null,reason=null;
         if (guard.Blocked || (guard.MaxLevel==1 && !confirmed)) { code=guard.Code; reason=guard.Reason; }
-        else if (!SameRoles(intent.Before,roles) || !SameRoles(expectedInputs,audio.Inputs())) {
+        else if (!SameRoles(intent.Before,roles) || !SameRoles(inputRoles,audio.Inputs())) {
             code="route_changed"; reason="默认角色已经改变";
         } else if (clock.ElapsedMilliseconds<quietUntil) { code="quiet_period"; reason="处于静默期"; }
         if (reason==null) return true;
@@ -249,7 +249,7 @@ internal sealed partial class AudioPanel
         skipped.Evidence=intent.Evidence; skipped.Timing=intent.Timing; journal.Add(skipped);
         return false;
     }
-    void ExecuteRoute(DecisionRecord intent,long since)
+    void ExecuteRoute(DecisionRecord intent,string[] inputRoles,long since)
     {
         journal.Add(intent);
         var targets = Three(intent.Target);
@@ -258,9 +258,9 @@ internal sealed partial class AudioPanel
         try
         {
             bool confirmed = intent.Source == "执行建议";
-            if (!CheckIntent(intent,confirmed,null)) return;
+            if (!CheckIntent(intent,inputRoles,confirmed,null)) return;
             volumeChange=PrepareLanding(intent.Target,intent.Before[1],intent.Id,confirmed);
-            if (!CheckIntent(intent,confirmed,volumeChange)) return;
+            if (!CheckIntent(intent,inputRoles,confirmed,volumeChange)) return;
             writing = true;
             audio.OutputWritesComplete = () => intent.Timing.WriteMs = RouteTiming.Elapsed(since,Stopwatch.GetTimestamp());
             try {

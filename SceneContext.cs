@@ -51,6 +51,12 @@ internal static class SceneContext
         return ReadWithRetry(()=>ReadOnce(inputs,outputs,roles,ignoreOwnStreams,collectPeaks));
     }
 
+    internal static SceneSignals ReadLive(Func<string[]> roles,bool ignoreOwnStreams)
+    {
+        // Enumeration can fail with the same transient RPC errors as the session reads.
+        return ReadWithRetry(()=>ReadOnce(AudioCore.List(1),AudioCore.List(0),roles(),ignoreOwnStreams,false));
+    }
+
     internal static SceneSignals ReadWithRetry(Func<SceneSignals> observe)
     {
         for (int attempt=0;;attempt++) {
