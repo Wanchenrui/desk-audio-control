@@ -12,6 +12,19 @@ internal sealed partial class AudioPanel
     Chip keyOut, keyMic, keyUndo;
     ToggleSwitch autoRoute, startup;
     PillButton soundApps, soundPanel, restore, decisionsButton;
+    Caption sceneStatus, sensitivityLabel;
+    FlatSlider sensitivitySlider;
+    PillButton autonomyButton, offerButton;
+    readonly string[] autonomyLabels = { "自适应（初始 L2）","L0 只提示","L1 一键执行","L2 切换并提示撤销","L3 静默切换" };
+
+    void RefreshSmartSettings()
+    {
+        sceneStatus.Text = "当前场景 · " + (scenes.Current ?? "识别中");
+        autonomyButton.Text = autonomyLabels[autonomy + 1];
+        sensitivityLabel.Text = "保守 → 积极   " + sensitivity + "%";
+        offerButton.Enabled = pendingRoute != null && clock.ElapsedMilliseconds < offerUntil;
+        offerButton.Text = offerButton.Enabled ? "执行建议 · " + pendingRoute.Evidence.Winner().Name : "暂无待执行建议";
+    }
 
     Caption Cap(Control parent, string text, float pt, bool bold, Tone tone)
     {
@@ -39,7 +52,7 @@ internal sealed partial class AudioPanel
     {
         ((Panel)page).AutoScroll = true;
         settingsTitle = Cap(page, "切换与设置", 14f, true, Tone.Ink);
-        string[] titles = { "快捷键", "接入与启动", "设备识别" };
+        string[] titles = { "快捷键", "智能切换", "设备识别" };
         for (int i = 0; i < block.Length; i++)
         {
             block[i] = new Card();
@@ -55,17 +68,33 @@ internal sealed partial class AudioPanel
         keyMic = new Chip { Dot = true };
         block[0].Controls.Add(keyOut);
         block[0].Controls.Add(keyMic);
-        autoRoute = Switch(block[1], "接入一个新的可用播放设备时，自动将它设为默认输出", preferNew, on =>
+        autoRoute = Switch(block[1], "根据设备接入与场景变化推荐或切换", preferNew, on =>
         {
-            try { LocalSettings.Put("PreferNewOutput", on ? "1" : "0"); preferNew = on; }
+            try { LocalSettings.Put("PreferNewOutput", on ? "1" : "0"); preferNew = on; pendingRoute = null; RefreshSmartSettings(); }
             catch (Exception e) { autoRoute.Set(preferNew); Fail(e.Message); }
         });
+        sceneStatus = Cap(block[1],"",9.5f,true,Tone.Ink);
+        autonomyButton = Pill(block[1],"",ButtonLook.Soft,"选择自治级别",delegate {
+            ThemedMenu.Choose(autonomyButton,autonomyLabels,autonomy + 1,n => Act(delegate {
+                LocalSettings.Put("RouteAutonomy",(n - 1).ToString()); autonomy = n - 1; pendingRoute = null; RefreshSmartSettings();
+            },false));
+        });
+        sensitivityLabel = Cap(block[1],"",9f,false,Tone.Muted);
+        sensitivitySlider = new FlatSlider { AccessibleName = "切换积极度" };
+        sensitivitySlider.Set(sensitivity);
+        sensitivitySlider.ValueChanged += delegate {
+            try { LocalSettings.Put("RouteSensitivity",sensitivitySlider.Value.ToString()); sensitivity = sensitivitySlider.Value; pendingRoute = null; RefreshSmartSettings(); }
+            catch (Exception e) { sensitivitySlider.Set(sensitivity); Fail(e.Message); }
+        };
+        block[1].Controls.Add(sensitivitySlider);
+        offerButton = Pill(block[1],"",ButtonLook.Soft,"执行切换建议",AcceptOffer);
+        RefreshSmartSettings();
         startup = Switch(block[1], "登录 Windows 后启用托盘和快捷键", LocalSettings.Startup, on => Act(() => LocalSettings.Startup = on, false));
         identifyBody = Cap(block[2], "新接入的 USB 和蓝牙音频设备会自动出现。双向声卡会列出播放和录音；可在设备页选择实际用途，同一设备下次接入时会沿用。\n板载、显示器和软件线路可在设备页打开“显示其他接口”查看，选择“加入日常设备”即可纳入快捷切换。", 9f, false, Tone.Muted);
         identifyBody.Wrap = true; identifyBody.TopAligned = true;
         soundApps = Pill(page, "应用音量和输出", ButtonLook.Soft, "应用音量和输出", () => Process.Start("ms-settings:apps-volume"));
         soundPanel = Pill(page, "Windows 声音设置", ButtonLook.Soft, "Windows 声音设置", () => Process.Start("ms-settings:sound"));
-        decisionsButton = Pill(page, "决策记录与撤销…", ButtonLook.Soft, "决策记录与撤销", ShowDecisions);
+        decisionsButton = Pill(page, "活动时间线与撤销…", ButtonLook.Soft, "活动时间线与撤销", ShowDecisions);
         if (!String.IsNullOrEmpty(LocalSettings.Get("BeforeInput")))
             restore = Pill(page, "恢复原默认话筒并退出…", ButtonLook.Ghost, "恢复设置", Restore);
     }
@@ -86,7 +115,7 @@ internal sealed partial class AudioPanel
         int pad = P(28), m = P(18), gap = P(12), cw = Math.Max(0, page.Width - 2 * pad), iw = Math.Max(0, cw - 2 * m);
         settingsTitle.SetBounds(pad, P(20), cw, P(34));
         int bodyH = Theme.MeasureWrapped(identifyBody.Text, Theme.Face(9f), iw) + P(2);
-        int[] heights = { P(148), P(124), P(42) + bodyH + P(18) };
+        int[] heights = { P(144), P(204), P(42) + bodyH + P(18) };
         int y = P(68);
         for (int i = 0; i < block.Length; i++)
         {
@@ -102,7 +131,12 @@ internal sealed partial class AudioPanel
         keyOut.Location = new Point(m + P(220), P(44) + (P(28) - keyOut.Height) / 2);
         keyMic.Location = new Point(m + P(220), P(76) + (P(28) - keyMic.Height) / 2);
         autoRoute.SetBounds(m, P(44), iw, P(32));
-        startup.SetBounds(m, P(82), iw, P(32));
+        sceneStatus.SetBounds(m + P(112), P(10), iw - P(112), P(28));
+        autonomyButton.SetBounds(m,P(82),P(170),P(32));
+        offerButton.SetBounds(m + P(182),P(82),iw - P(182),P(32));
+        sensitivityLabel.SetBounds(m,P(120),P(158),P(32));
+        sensitivitySlider.SetBounds(m + P(164),P(120),iw - P(164),P(32));
+        startup.SetBounds(m, P(160), iw, P(32));
         identifyBody.SetBounds(m, P(42), iw, bodyH);
         soundApps.SetBounds(pad, y + P(4), P(156), P(34));
         soundPanel.SetBounds(pad + P(166), y + P(4), P(166), P(34));

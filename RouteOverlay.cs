@@ -8,7 +8,7 @@ internal sealed class RouteOverlay : Form
     readonly Timer timeout = new Timer { Interval = 1200 };
     readonly string label;
     readonly int volume;
-    readonly bool hasUndo;
+    readonly bool hasAction;
     [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern IntPtr GetShellWindow();
@@ -30,19 +30,20 @@ internal sealed class RouteOverlay : Form
         return r.Left <= screen.Left && r.Right >= screen.Right && r.Top <= screen.Top && r.Bottom >= screen.Bottom;
     }
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd,System.Text.StringBuilder text,int size);
-    public RouteOverlay(string device,int level,Action undo)
+    public RouteOverlay(string device,int level,Action action,string actionLabel = "撤销")
     {
-        label = device; volume = level; hasUndo = undo != null;
+        label = device; volume = level; hasAction = action != null;
+        if (actionLabel == "执行") timeout.Interval = 6000;
         FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true;
         StartPosition = FormStartPosition.Manual; AutoScaleMode = AutoScaleMode.None;
         DoubleBuffered = true; BackColor = Theme.Surface; AccessibleName = "音频设备切换 · " + device;
-        ClientSize = new Size(P(hasUndo ? 352 : 282),P(70));
+        ClientSize = new Size(P(hasAction ? 352 : 282),P(70));
         using (var shape = Theme.Round(ClientRectangle,P(28))) Region = new Region(shape);
-        if (hasUndo)
+        if (hasAction)
         {
-            var button = new PillButton { Text = "撤销", AccessibleName = "撤销自动切换", Kind = ButtonLook.Soft };
+            var button = new PillButton { Text = actionLabel, AccessibleName = actionLabel + "切换", Kind = ButtonLook.Soft };
             button.SetBounds(Width-P(82),P(17),P(66),P(36));
-            button.Click += delegate { Hide(); undo(); };
+            button.Click += delegate { Hide(); action(); };
             Controls.Add(button);
         }
         timeout.Tick += delegate { timeout.Stop(); Close(); };
@@ -59,7 +60,7 @@ internal sealed class RouteOverlay : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        int x = P(56), w = Width - x - P(hasUndo ? 94 : 24);
+        int x = P(56), w = Width - x - P(hasAction ? 94 : 24);
         Theme.Quality(e.Graphics);
         Theme.Draw(e.Graphics,"",Theme.Icons(16),new Rectangle(P(14),0,P(32),Height),Theme.Accent,TextFormatFlags.HorizontalCenter);
         Theme.Draw(e.Graphics,label,Theme.Face(10,FontStyle.Bold),new Rectangle(x,P(10),w,P(30)),Theme.Ink,TextFormatFlags.Left);

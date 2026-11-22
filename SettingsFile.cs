@@ -33,11 +33,14 @@ internal static class JsonFile
 
     public static void Save<T>(string path, T value)
     {
+        SaveJson(path,new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 }.Serialize(value));
+    }
+    internal static void SaveJson(string path,string json)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
         string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            var json = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 }.Serialize(value);
             using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(json);

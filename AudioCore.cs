@@ -5,7 +5,8 @@ using System.Runtime.InteropServices;
 public sealed class AudioItem
 {
     public string Id, Name, Bus;
-    public int Flow, State;
+    public int Flow, State, Channels;
+    public bool HandsFreeProfile;
 }
 
 public static class AudioCore
@@ -14,6 +15,7 @@ public static class AudioCore
     const int NotFound = unchecked((int)0x80070490);
     static readonly Key FriendlyName = new Key("A45C254E-DF1C-4EFD-8020-67D146A850E0", 14);
     static readonly Key InterfaceName = new Key("026E516E-B814-414B-83CD-856D6FEF4822", 2);
+    static readonly Key DeviceFormat = new Key("F19F064D-082C-4E27-BC73-6882A1BB8E4C",0);
 
     [StructLayout(LayoutKind.Sequential)]
     struct Key
@@ -118,6 +120,13 @@ public static class AudioCore
     }
     [ComImport, Guid("F4B1A599-7266-4319-A8CA-E70ACB11E8CD"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     interface ISessionControl { void GetState(out int state); }
+    [ComImport, Guid("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface ISessionControl2
+    {
+        void State(); void DisplayName(); void SetDisplayName(); void Icon(); void SetIcon();
+        void Grouping(); void SetGrouping(); void Register(); void Unregister();
+        void Identifier(); void InstanceIdentifier(); void GetProcessId(out uint pid);
+    }
 
     static void Release(object obj) { if (obj != null) Marshal.ReleaseComObject(obj); }
     static void CheckFlow(int flow)
@@ -143,9 +152,23 @@ public static class AudioCore
         {
             string name = ReadText(store, FriendlyName);
             return new AudioItem { Id = id, Name = String.IsNullOrEmpty(name) ? id : name,
-                Bus = ReadText(store, InterfaceName), Flow = flow, State = (int)state };
+                Bus = ReadText(store, InterfaceName), Flow = flow, State = (int)state, Channels = ReadChannels(store) };
         }
         finally { Release(store); }
+    }
+    static int ReadChannels(IStore store)
+    {
+        Key key = DeviceFormat;
+        Variant value;
+        try { store.GetValue(ref key,out value); }
+        catch (COMException) { return 0; }
+        try
+        {
+            // VT_BLOB contains a DWORD byte length and an aligned pointer to WAVEFORMATEX.
+            return value.Vt == 65 && (uint)value.Value.ToInt64() >= 16 && value.Extra != IntPtr.Zero ?
+                (ushort)Marshal.ReadInt16(value.Extra,2) : 0;
+        }
+        finally { PropVariantClear(ref value); }
     }
     public static List<AudioItem> List(int flow)
     {
@@ -283,6 +306,10 @@ public static class AudioCore
     }
     public static bool InUse(string id)
     {
+        return ActiveSessions(id) != 0;
+    }
+    public static int ActiveSessions(string id,Action<uint> activeProcess = null)
+    {
         return WithService(id, (ISessionManager manager) =>
         {
             ISessionEnumerator sessions;
@@ -291,6 +318,7 @@ public static class AudioCore
             {
                 int count;
                 sessions.GetCount(out count);
+                int active = 0;
                 for (int i = 0; i < count; i++)
                 {
                     ISessionControl control;
@@ -299,11 +327,20 @@ public static class AudioCore
                     {
                         int state;
                         control.GetState(out state);
-                        if (state == 1) return true;
+                        if (state == 1)
+                        {
+                            active++;
+                            if (activeProcess != null)
+                            {
+                                uint pid;
+                                ((ISessionControl2)control).GetProcessId(out pid);
+                                activeProcess(pid);
+                            }
+                        }
                     }
                     finally { Release(control); }
                 }
-                return false;
+                return active;
             }
             finally { Release(sessions); }
         });

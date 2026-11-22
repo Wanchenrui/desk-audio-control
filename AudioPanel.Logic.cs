@@ -51,14 +51,48 @@ internal sealed partial class AudioPanel
         busy = true;
         try
         {
+            lastScanError = null;
+            if (!hasSnapshot) RestoreQuietPeriod();
+            var previous = groups;
             groups = snap.Groups; plugs.Observe(groups);
-            defaultOut = snap.Out; defaultIn = snap.In;
+            defaultOut = snap.Outputs[1]; defaultIn = snap.Inputs[1];
             var physical = groups.Where(g => !g.Virtual && g.Outputs.Count > 0 &&
                 (!g.Infrastructure || plugs.Recent(g,0) || g.SensedOutputs.Count != 0 || g.Kind == "显示器音频")).ToList();
-            var added = arrivals.Observe(physical.Select(g => g.Key));
+            var added = new HashSet<string>(arrivals.Observe(physical.Select(g => g.Key)),StringComparer.OrdinalIgnoreCase);
+            if (hasSnapshot)
+            {
+                // Bluetooth can expose HFP first, then add the stereo port to the existing group.
+                foreach (var g in physical.Where(g => !added.Contains(g.Key)))
+                {
+                    var old = previous.FirstOrDefault(p => Same(p.Key,g.Key));
+                    if (old == null) continue;
+                    var port = g.Kind == "Bluetooth" ? SmartPolicy.StereoOutput(g,defaultOut) : SmartPolicy.Pick(g,0,defaultOut);
+                    if (port != null && (!ContainsId(old.Outputs,port.Id) ||
+                        g.SensedOutputs.Except(old.SensedOutputs,StringComparer.OrdinalIgnoreCase).Any()))
+                        added.Add(g.Key);
+                }
+            }
+            bool sceneChanged = scenes.Observe(snap.Signals.ObservedScene(scenes.Current),clock.ElapsedMilliseconds);
+            bool topology = hasSnapshot && RecordConnections(previous,groups,reasons);
+            if (sceneChanged) Activity("场景识别","",scenes.Current,"scene");
+            if (!topology && hasSnapshot && (!SameRoles(expectedOutputs,snap.Outputs) || !SameRoles(expectedInputs,snap.Inputs)))
+            {
+                quietUntil = clock.ElapsedMilliseconds + 30000;
+                pendingRoute = null;
+                if (!SameRoles(expectedOutputs,snap.Outputs))
+                {
+                    try { RecordChoice("Windows",defaultOut,expectedOutputs[1]); } catch (Exception e) { Fail(e.Message); }
+                }
+                else Activity("Windows",NameFor(defaultIn,1),"默认输入角色变化","input");
+            }
+            expectedOutputs = snap.Outputs; expectedInputs = snap.Inputs;
+            if (topology || sceneChanged || snap.Signals.Guard() != null || clock.ElapsedMilliseconds >= offerUntil)
+                pendingRoute = null;
             hasSnapshot = true;
             if (cycleOnReady) { cycleOnReady = false; Act(Cycle); }
-            else if (preferNew && added.Length > 0) ConsiderRoute(reasons, since, physical.Where(g => added.Contains(g.Key)).ToList());
+            else if (preferNew && (added.Count > 0 || sceneChanged || topology))
+                ConsiderRoute(snap,reasons,since,added.ToArray());
+            RefreshSmartSettings();
             var ordered = groups.OrderBy(g => !Primary(g)).ThenBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
             var shown = ordered.Where(g => Primary(g) || showAll.Checked).ToList();
             counts.Text = "日常设备  " + ordered.Count(Primary) + (showAll.Checked ? "    ·    全部 " + ordered.Count : "");
@@ -73,17 +107,27 @@ internal sealed partial class AudioPanel
         finally { busy = false; }
     }
 
-    void ScanFailed(Exception e) { statusUntil = 0; SetStatus("设备状态暂时不可用 · " + e.Message, Tone.Warn); LocalSettings.Log(e.ToString()); }
+    string lastScanError;
+    void ScanFailed(Exception e)
+    {
+        pendingRoute = null;
+        if (lastScanError != e.Message) Activity("设备扫描","",e.Message,"anomaly");
+        lastScanError = e.Message;
+        statusUntil = 0; SetStatus("设备状态暂时不可用 · " + e.Message, Tone.Warn); LocalSettings.Log(e.ToString());
+    }
 
     // What a scan reads from Windows. It touches no window state, so it can be taken on any thread.
     sealed class Snapshot
     {
         public List<SmartGroup> Groups;
-        public string Out, In;
+        public string[] Outputs, Inputs;
+        public SceneSignals Signals;
     }
     Snapshot TakeSnapshot()
     {
-        return new Snapshot { Groups = audio.Scan(), Out = audio.Default(0, 1), In = audio.Default(1, 1) };
+        var snap = new Snapshot { Groups = audio.Scan(), Outputs = audio.Outputs(), Inputs = audio.Inputs() };
+        snap.Signals = audio.Context(snap.Groups,snap.Outputs);
+        return snap;
     }
     long NextScanAt() { return clock.ElapsedMilliseconds + (events.Registered ? 10000 : 2500); }
 

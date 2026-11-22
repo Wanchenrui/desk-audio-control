@@ -12,12 +12,15 @@ $sources = @(
     (Join-Path $project 'AudioCore.cs')
     (Join-Path $project 'AudioDiscovery.cs')
     (Join-Path $project 'SmartPolicy.cs')
+    (Join-Path $project 'SceneSwitch.cs')
+    (Join-Path $project 'SceneContext.cs')
+    (Join-Path $project 'PanelAudio.cs')
 )
 $tempName = 'DeskAudio.Tests.' + [Guid]::NewGuid().ToString('N') + '.exe'
 $tempExe = Join-Path ([IO.Path]::GetTempPath()) $tempName
 
 try {
-    foreach ($suite in 'DiscoveryTest', 'SmartPolicyTest', 'EndpointCacheTest', 'ScanGateTest', 'FoundationTest') {
+    foreach ($suite in 'DiscoveryTest', 'SmartPolicyTest', 'EndpointCacheTest', 'ScanGateTest', 'FoundationTest', 'SceneSwitchTest') {
         $testSource = Join-Path $PSScriptRoot ($suite + '.cs')
         & $compiler /nologo /target:exe /platform:x64 /codepage:65001 /r:System.Web.Extensions.dll "/out:$tempExe" @sources $testSource
         if ($LASTEXITCODE -ne 0) { throw "Could not compile $suite." }

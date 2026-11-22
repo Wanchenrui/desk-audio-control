@@ -243,7 +243,11 @@ public static class AudioDiscovery
                     Key = key, Name = DisplayName(device, family), Kind = family,
                     Virtual = family == "虚拟音频", Infrastructure = family == "虚拟音频" || family == "板载音频" || family == "显示器音频"
                 };
-                foreach (var row in device) group.Forms[row.Item.Id] = row.Form;
+                foreach (var row in device)
+                {
+                    group.Forms[row.Item.Id] = row.Form;
+                    row.Item.HandsFreeProfile = Bus(row).StartsWith("BTHHF",StringComparison.Ordinal);
+                }
                 foreach (var item in device.Select(r => r.Item).OrderBy(i => i.Id, Compare))
                     (item.Flow == 0 ? group.Outputs : group.Inputs).Add(item);
                 foreach (var sensed in device.Where(r => r.Sensed == true))

@@ -12,16 +12,31 @@ internal sealed partial class AudioPanel
 {
     internal sealed class ReplayAudio : PanelAudio
     {
-        public volatile bool Connected, ActiveCall;
+        public volatile bool Connected, ActiveCall, Bluetooth, HfpOnly;
+        public string Foreground;
         public readonly Stopwatch Clock = Stopwatch.StartNew();
         public int Scans, Writes;
         public long AppliedAt;
         public string[] Roles = { "old-console", "old-music", "old-call" };
+        public string[] MicRoles = { null,null,null };
         public override List<SmartGroup> Scan()
         {
             Interlocked.Increment(ref Scans);
             var result = new List<SmartGroup> { Group("old-music","音箱") };
+            if (Bluetooth)
+            {
+                result[0].Inputs.Add(new AudioItem { Id="desk",Name="桌面话筒", Flow=1 });
+                result[0].Forms["desk"] = 4;
+            }
             if (Connected) result.Add(Group("usb","USB 耳机"));
+            if (Bluetooth && Connected)
+            {
+                var bt = result[1];
+                bt.Kind="Bluetooth"; bt.Outputs[0].Name="Stereo"; bt.Forms["usb"]=3; bt.Outputs[0].Channels=2;
+                bt.Outputs.Add(new AudioItem { Id="hf",Name="Hands-Free AG Audio" });
+                if (HfpOnly) bt.Outputs.RemoveAt(0);
+                bt.Inputs.Add(new AudioItem { Id="hfin",Name="Headset",Flow=1 });
+            }
             return result;
         }
         static SmartGroup Group(string id,string name)
@@ -32,7 +47,13 @@ internal sealed partial class AudioPanel
         }
         public override string Default(int flow,int role) { return flow == 0 ? Roles[role] : null; }
         public override string[] Outputs() { return (string[])Roles.Clone(); }
-        public override bool InUse(string id) { return ActiveCall; }
+        public override string[] Inputs() { return (string[])MicRoles.Clone(); }
+        public override void RouteInputs(string[] targets,string[] expected)
+        {
+            RouteTransaction.Apply(targets,i => MicRoles[i],(i,v) => MicRoles[i]=v,expected);
+        }
+        public override SceneSignals Context(List<SmartGroup> groups,string[] roles) { return new SceneSignals { Hour = 12, Communicating = ActiveCall, Foreground = Foreground }; }
+        public override string Guard(string[] roles) { return ActiveCall ? "会议保护" : null; }
         public override void RouteOutputs(string[] targets,string[] expected)
         {
             RouteTransaction.Apply(targets,i => Roles[i],(i,v) => Roles[i]=v,expected);
@@ -44,11 +65,11 @@ internal sealed partial class AudioPanel
     {
         WaitFor(() => hasSnapshot);
         var elapsed = new List<long>();
-        preferNew = true;
+        preferNew = true; autonomy = 2;
         for (int i = 0; i < 7; i++)
         {
             // Advance past the quiet period between independent replay runs.
-            quietUntil = 0;
+            journal.Clear(); quietUntil = 0;
             int oldScans = device.Scans;
             device.Connected = true;
             long started = device.Clock.ElapsedMilliseconds;
@@ -73,6 +94,66 @@ internal sealed partial class AudioPanel
         elapsed.Sort();
         Console.WriteLine("7/7 insertion bursts merged; 7/7 role restores; call guard passed; simulated endpoint -> verified route median {0} ms (range {1}-{2})",
             elapsed[3],elapsed[0],elapsed[6]);
+        SmokeAutonomy(device);
+    }
+
+    void SmokeAutonomy(ReplayAudio device)
+    {
+        device.ActiveCall = false;
+        Action<int> insert = level => {
+            device.Connected = false; bus.Publish(ScanReason.Removed);
+            WaitFor(() => groups.Count == 1);
+            journal.Clear(); quietUntil = 0; autonomy = level;
+            device.Connected = true; bus.Publish(ScanReason.Added);
+            WaitFor(() => groups.Count == 2);
+        };
+        int writes = device.Writes;
+        insert(0);
+        if (device.Writes != writes || pendingRoute != null || journal.Records().Last().Result != "hint") throw new Exception("L0 wrote or offered");
+        insert(1);
+        if (pendingRoute == null || !offerButton.Enabled || device.Writes != writes) throw new Exception("L1 action missing");
+        device.ActiveCall = true;
+        try { AcceptOffer(); } catch (InvalidOperationException) { }
+        if (device.Writes != writes || journal.Records().Last().Result != "skipped") throw new Exception("stale L1 bypassed call protection");
+        device.ActiveCall = false; insert(1);
+        AcceptOffer();
+        if (device.Roles[1] != "usb" || journal.LatestUndo().InputBefore != null) throw new Exception("L1 acceptance");
+        UndoRoute("test");
+        var previousOverlay = overlay; insert(3);
+        if (device.Roles[1] != "usb" || previousOverlay != overlay)
+            throw new Exception("L3 notification or missing write");
+        var active = journal.LatestUndo();
+        device.Roles = new[] { "outside","old-music","old-call" };
+        bus.Publish(ScanReason.Default);
+        WaitFor(() => defaultOut == "old-music");
+        if (journal.LatestUndo() != null || !journal.Records().Any(r => r.Result == "corrected" && r.Related == active.Id))
+            throw new Exception("external role correction missing");
+        Console.WriteLine("L0 hint, L1 fresh acceptance and stale call veto, L3 silent routing and Windows correction passed.");
+        device.Bluetooth = true; device.MicRoles = new[] { "desk","hfin","hfin" }; insert(2);
+        var paired = journal.LatestUndo();
+        if (paired == null || paired.Target != "usb" || device.MicRoles.Any(p => p != "desk")) throw new Exception("Bluetooth paired route");
+        UndoRoute("test");
+        if (!device.MicRoles.SequenceEqual(new[] { "desk","hfin","hfin" }) || device.Roles[1] != "old-music")
+            throw new Exception("Bluetooth paired undo");
+        Console.WriteLine("Bluetooth stereo + independent microphone and mixed-role undo passed.");
+        journal.Clear(); quietUntil = 0; device.Foreground="游戏";
+        bus.Publish(ScanReason.Poll);
+        WaitFor(() => !gate.Running && !gate.Pending && device.Clock.ElapsedMilliseconds > 16500);
+        long observed = clock.ElapsedMilliseconds;
+        bus.Publish(ScanReason.Poll);
+        WaitFor(() => clock.ElapsedMilliseconds - observed >= 5200);
+        bus.Publish(ScanReason.Poll);
+        WaitFor(() => device.Roles[1] == "usb");
+        if (scenes.Current!="游戏" || journal.LatestUndo().Evidence.Ranked.Any(p => p.Recent))
+            throw new Exception("stable scene should switch already-connected devices");
+        Console.WriteLine("Stable scene transition reranked connected endpoints without a plug event.");
+        UndoRoute("test");
+        device.HfpOnly = true; insert(2);
+        if (device.Roles[1] == "hf" || journal.LatestUndo() != null) throw new Exception("HFP-only output selected");
+        device.HfpOnly = false; bus.Publish(ScanReason.State);
+        WaitFor(() => device.Roles[1] == "usb");
+        if (!journal.LatestUndo().Evidence.Winner().Recent) throw new Exception("late stereo arrival lost");
+        Console.WriteLine("HFP-only connection waited for a later stereo endpoint on the same headset.");
     }
 
     internal void SmokeHardware()
@@ -90,8 +171,8 @@ internal sealed partial class AudioPanel
             rail.Index = i; LayoutAll(); Update();
             if (i == 2)
             {
-                var available = new UpdateResult(UpdateState.Available,"发现新版本 v1.3.0。","v1.3.0") {
-                    Package = new UpdatePackage(1,123,new String('a',64),new Version(1,3,0))
+                var available = new UpdateResult(UpdateState.Available,"发现新版本 v1.4.0。","v1.4.0") {
+                    Package = new UpdatePackage(1,123,new String('a',64),new Version(1,4,0))
                 };
                 updates.ShowRelease(available);
                 if (!updates.Controls.Find("InstallUpdate",true).Any(c => c.Visible && c.Enabled))
@@ -102,7 +183,7 @@ internal sealed partial class AudioPanel
         using (var capture = new System.Windows.Forms.Timer { Interval = 180 })
         {
             capture.Tick += delegate {
-                var dialog = Application.OpenForms.Cast<Form>().FirstOrDefault(w => w.Text == "决策记录");
+                var dialog = Application.OpenForms.Cast<Form>().FirstOrDefault(w => w.Text == "活动时间线");
                 if (dialog == null) return;
                 capture.Stop();
                 using (var bmp = new Bitmap(dialog.Width,dialog.Height)) { dialog.DrawToBitmap(bmp,new Rectangle(0,0,dialog.Width,dialog.Height)); bmp.Save(Path.Combine(folder,"decisions.png")); }

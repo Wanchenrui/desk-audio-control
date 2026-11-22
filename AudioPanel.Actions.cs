@@ -10,7 +10,7 @@ internal sealed partial class AudioPanel
     void Cycle()
     {
         if (!hasSnapshot) { cycleOnReady = true; bus.Publish(ScanReason.Refresh); return; }
-        defaultOut = AudioCore.Default(0,1);
+        defaultOut = audio.Default(0,1);
         var options = OutputCycle();
         if (options.Count == 0) throw new InvalidOperationException("当前没有可切换的日常播放设备。");
         var current = groups.FirstOrDefault(g => ContainsId(g.Outputs, defaultOut));
@@ -25,10 +25,13 @@ internal sealed partial class AudioPanel
         quietUntil = clock.ElapsedMilliseconds + 30000;
         if (p.Flow == 0)
         {
+            string previous = defaultOut;
             defaultOut = p.Id;
-            RecordManual(p);
+            expectedOutputs = Three(p.Id);
+            try { RecordChoice("手动",p.Id,previous); } catch (Exception e) { Fail("切换成功，记录写入失败。 " + e.Message); }
         }
-        else defaultIn = p.Id;
+        else { defaultIn = p.Id; expectedInputs = Three(p.Id); Activity("手动",p.Name,"用户选择默认输入","input"); }
+        pendingRoute = null;
         ShowRoute(p.Name,p.Id,false);
     }
     void Toggle(AudioItem p)

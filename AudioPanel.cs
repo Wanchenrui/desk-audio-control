@@ -136,7 +136,9 @@ internal sealed partial class AudioPanel : Form
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("默认话筒静音 / 取消静音", null, (o, a) => Act(ToggleDefaultMic));
             menu.Items.Add("撤销最近自动切换", null, (o, a) => Act(() => UndoRoute("托盘")));
-            menu.Items.Add("决策记录…", null, (o, a) => Act(ShowDecisions,false));
+            if (pendingRoute != null && clock.ElapsedMilliseconds < offerUntil)
+                menu.Items.Add("执行建议 · " + pendingRoute.Evidence.Winner().Name, null, (o,a) => Act(AcceptOffer));
+            menu.Items.Add("活动时间线…", null, (o, a) => Act(ShowDecisions,false));
             menu.Items.Add("退出", null, (o, a) => { closing = true; Close(); });
         };
         tray.ContextMenuStrip = menu; tray.Icon = Icon; tray.Text = "桌面音频"; tray.Visible = true;

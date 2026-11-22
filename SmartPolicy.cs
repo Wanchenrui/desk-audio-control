@@ -96,11 +96,19 @@ public static class SmartPolicy
             throw new ArgumentException("Selected port does not belong to this group.");
         WriteSetting(g, PortSetting(flow), id);
     }
-    static bool HandsFree(AudioItem p)
+    internal static bool HandsFree(AudioItem p)
     {
         string text = (p.Name ?? "") + " " + (p.Bus ?? "");
         string[] hints = { "hands-free", "hands free", "handsfree", "ag audio", "ag-audio", "免提", "通话音频", "freisprechen", "mains libres", "manos libres" };
-        return hints.Any(s => text.IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0);
+        return p.HandsFreeProfile || hints.Any(s => text.IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+    internal static AudioItem StereoOutput(SmartGroup g,string defaultId)
+    {
+        return SelectStereo(g,defaultId,ReadSetting(g,".Output"));
+    }
+    internal static AudioItem SelectStereo(SmartGroup g,string defaultId,string remembered)
+    {
+        return SelectPort(g.Outputs.Where(p => !HandsFree(p) && p.Channels != 1).ToList(),0,defaultId,remembered);
     }
     internal static AudioItem SelectPort(List<AudioItem> choices, int flow, string defaultId, string rememberedId)
     {

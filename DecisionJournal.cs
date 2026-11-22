@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Web.Script.Serialization;
 
 // A decision can be replayed with these observations alone, with no audio device access.
 internal sealed class SwitchEvidence
@@ -11,9 +13,44 @@ internal sealed class SwitchEvidence
     public bool Quiet { get; set; }
     public bool CanRestore { get; set; }
     public bool InUse { get; set; }
+    // Absent for v1.1/v1.2 records, which retain their original replay rules.
+    public RouteCandidate[] Ranked { get; set; }
+    public string Scene { get; set; }
+    public string Guard { get; set; }
+    public bool PairCurrentInput { get; set; }
+    public int Sensitivity { get; set; }
+    public int Sessions { get; set; }
+
+    public RouteCandidate Winner()
+    {
+        return Ranked.Where(p => p != null && !String.IsNullOrEmpty(p.Id))
+            .OrderByDescending(p => p.Score(this)).ThenByDescending(p => RouteTransaction.Equal(p.Id,DefaultOutput))
+            .ThenBy(p => p.Id,StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+    }
+    public string Explain()
+    {
+        if (Ranked == null) return SkipReason() ?? "唯一符合用途的新增输出";
+        var best = Winner();
+        var scores = String.Join("、",Ranked.Where(p => p != null).Select(p => p.Name + " " + p.Score(this)));
+        return Scene + " · " + (SkipReason() ?? ("选择 " + best.Name + " · L" + best.Level)) + "（" + scores + "）";
+    }
 
     public string SkipReason()
     {
+        if (Ranked != null)
+        {
+            if (Guard != null) return Guard;
+            if (Quiet) return "处于手动操作或切换后的 30 秒静默期";
+            if (!CanRestore) return "缺少可供撤销的默认角色";
+            var best = Winner();
+            if (best == null) return "没有符合用途和蓝牙配置要求的输出";
+            if (RouteTransaction.Equal(best.Id,DefaultOutput)) return PairCurrentInput ? null : "保留当前得分最高的输出";
+            if (Ranked.Count(p => p != null && p.Score(this) == best.Score(this)) > 1) return "候选同分，保留当前选择";
+            var current = Ranked.FirstOrDefault(p => p != null && RouteTransaction.Equal(p.Id,DefaultOutput));
+            int margin = 4 + (100 - Sensitivity) / 4;
+            if (best.Score(this) - (current == null ? 0 : current.Score(this)) < margin) return "得分优势未达到切换门槛";
+            return null;
+        }
         if (Eligible == null || Eligible.Length == 0) return "用途偏好排除了新增输出";
         if (Eligible.Length != 1) return "同时接入多个候选输出";
         if (String.Equals(Eligible[0],DefaultOutput,StringComparison.OrdinalIgnoreCase)) return "已是默认输出";
@@ -38,6 +75,10 @@ internal sealed class DecisionRecord
     public SwitchEvidence Evidence { get; set; }
     public string Target { get; set; }
     public bool Imported { get; set; }
+    public string DeviceKey { get; set; }
+    public string Scene { get; set; }
+    public string[] InputBefore { get; set; }
+    public string[] InputAfter { get; set; }
 
     public static DecisionRecord Create(string source, string candidates, string reason, string result)
     {
@@ -55,6 +96,7 @@ internal sealed class DecisionJournal
     }
 
     readonly string path;
+    public event Action Changed;
     public DecisionJournal(string folder) { path = Path.Combine(folder, "decisions.json"); }
 
     static List<DecisionRecord> Load(string file)
@@ -83,7 +125,20 @@ internal sealed class DecisionJournal
         });
     }
     List<DecisionRecord> LoadLocal() { return File.Exists(path) ? Load(path) : new List<DecisionRecord>(); }
-    void Save(List<DecisionRecord> next) { JsonFile.Save(path, new Document { Version = 1, Entries = next }); }
+    void Save(List<DecisionRecord> next)
+    {
+        var serializer = new JavaScriptSerializer { MaxJsonLength = Int32.MaxValue };
+        var document = new Document { Version = 1, Entries = next };
+        for (;;)
+        {
+            string json = serializer.Serialize(document);
+            int bytes = Encoding.UTF8.GetByteCount(json);
+            if (bytes <= 8 * 1024 * 1024) { JsonFile.SaveJson(path,json); return; }
+            if (next.Count <= 1) throw new InvalidDataException("单条决策记录过大");
+            int excess = (int)Math.Ceiling(next.Count * (1.0 - 8.0 * 1024 * 1024 / bytes));
+            next.RemoveRange(0,Math.Min(next.Count - 1,excess));
+        }
+    }
     void Change(Action<List<DecisionRecord>> update)
     {
         JsonFile.Locked(path,delegate {
@@ -92,6 +147,8 @@ internal sealed class DecisionJournal
             Save(Recent(entries));
             return true;
         });
+        var changed = Changed;
+        if (changed != null) changed();
     }
     public void Add(DecisionRecord record) { Change(all => all.Add(record)); }
     public void Clear() { JsonFile.Locked(path,delegate { Save(new List<DecisionRecord>()); return true; }); }
