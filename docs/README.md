@@ -11,6 +11,8 @@
 | [design/04-interaction-api.md](design/04-interaction-api.md) | 交互层与开放接口 |
 | [design/05-data-security.md](design/05-data-security.md) | 数据、隐私、安全，以及与现有模块的映射 |
 | [design/06-roadmap.md](design/06-roadmap.md) | 路线图、验收指标、风险与远景 |
+| [design/07-algorithm-brief.md](design/07-algorithm-brief.md) | 后台算法交接方案 |
+| [design/08-algorithm-implementation.md](design/08-algorithm-implementation.md) | 开发版实现参数与未测指标 |
 | [MAINTENANCE.md](MAINTENANCE.md) | 构建、测试、提交、发布约定与未验证清单 |
 
 ## 阅读须知
