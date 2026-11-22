@@ -26,7 +26,7 @@ internal sealed partial class AudioPanel
     {
         counts = Cap(page, "", 14f, true, Tone.Ink);
         showAll = new ToggleSwitch { Text = "显示其他接口", AccessibleName = "显示其他接口" };
-        showAll.CheckedChanged += delegate { portSignature = null; RefreshDevices(false); };
+        showAll.CheckedChanged += delegate { portSignature = null; bus.Publish(ScanReason.Refresh); };
         page.Controls.Add(showAll);
         devices = new DeviceList();
         devices.SelectionChanged += delegate { ShowSelection(); };
@@ -63,6 +63,7 @@ internal sealed partial class AudioPanel
                 var p = Chosen(flow);
                 if (p == null) return;
                 int n = volume[flow].Value;
+                quietUntil = clock.ElapsedMilliseconds + 30000;
                 AudioCore.SetVolume(p.Id, n);
                 laneValue[flow].Text = n + " %";
             }, false);

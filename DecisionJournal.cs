@@ -1,0 +1,125 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+// A decision can be replayed with these observations alone, with no audio device access.
+internal sealed class SwitchEvidence
+{
+    public string[] Eligible { get; set; }
+    public string DefaultOutput { get; set; }
+    public bool Quiet { get; set; }
+    public bool CanRestore { get; set; }
+    public bool InUse { get; set; }
+
+    public string SkipReason()
+    {
+        if (Eligible == null || Eligible.Length == 0) return "用途偏好排除了新增输出";
+        if (Eligible.Length != 1) return "同时接入多个候选输出";
+        if (String.Equals(Eligible[0],DefaultOutput,StringComparison.OrdinalIgnoreCase)) return "已是默认输出";
+        if (Quiet) return "处于手动操作或切换后的 30 秒静默期";
+        if (!CanRestore) return "缺少可供撤销的默认角色";
+        if (InUse) return "录音或通信输出正在使用，或占用状态未知";
+        return null;
+    }
+}
+
+internal sealed class DecisionRecord
+{
+    public string Id { get; set; }
+    public DateTime Utc { get; set; }
+    public string Source { get; set; }
+    public string Candidates { get; set; }
+    public string Reason { get; set; }
+    public string Result { get; set; }
+    public string Related { get; set; }
+    public string[] Before { get; set; }
+    public long? LatencyMs { get; set; }
+    public SwitchEvidence Evidence { get; set; }
+    public string Target { get; set; }
+    public bool Imported { get; set; }
+
+    public static DecisionRecord Create(string source, string candidates, string reason, string result)
+    {
+        return new DecisionRecord { Id = Guid.NewGuid().ToString("N"), Utc = DateTime.UtcNow, Source = source,
+            Candidates = candidates, Reason = reason, Result = result };
+    }
+}
+
+internal sealed class DecisionJournal
+{
+    public sealed class Document
+    {
+        public int Version { get; set; }
+        public List<DecisionRecord> Entries { get; set; }
+    }
+
+    readonly string path;
+    public DecisionJournal(string folder) { path = Path.Combine(folder, "decisions.json"); }
+
+    static List<DecisionRecord> Load(string file)
+    {
+        var doc = JsonFile.Read<Document>(file);
+        if (doc == null || doc.Version != 1 || doc.Entries == null || doc.Entries.Any(r =>
+            r == null || String.IsNullOrEmpty(r.Id) || r.Utc == default(DateTime) || r.Result == null))
+            throw new InvalidDataException("不支持的决策日志格式。");
+        return doc.Entries;
+    }
+
+    static List<DecisionRecord> Recent(IEnumerable<DecisionRecord> all)
+    {
+        var now = DateTime.UtcNow;
+        return all.Where(r => r.Utc.ToUniversalTime() >= now.AddDays(-30) && r.Utc.ToUniversalTime() <= now.AddMinutes(5))
+            .OrderByDescending(r => r.Utc.ToUniversalTime()).Take(1500).OrderBy(r => r.Utc.ToUniversalTime()).ToList();
+    }
+
+    public List<DecisionRecord> Records()
+    {
+        return JsonFile.Locked(path,delegate {
+            var entries = LoadLocal();
+            var current = Recent(entries);
+            if (current.Count != entries.Count) Save(current);
+            return current;
+        });
+    }
+    List<DecisionRecord> LoadLocal() { return File.Exists(path) ? Load(path) : new List<DecisionRecord>(); }
+    void Save(List<DecisionRecord> next) { JsonFile.Save(path, new Document { Version = 1, Entries = next }); }
+    void Change(Action<List<DecisionRecord>> update)
+    {
+        JsonFile.Locked(path,delegate {
+            var entries = LoadLocal();
+            update(entries);
+            Save(Recent(entries));
+            return true;
+        });
+    }
+    public void Add(DecisionRecord record) { Change(all => all.Add(record)); }
+    public void Clear() { JsonFile.Locked(path,delegate { Save(new List<DecisionRecord>()); return true; }); }
+    public void Export(string file) { JsonFile.Save(file,new Document { Version = 1, Entries = Records() }); }
+    public void Import(string file)
+    {
+        var incoming = Load(file);
+        Change(all => {
+            var ids = new HashSet<string>(all.Select(r => r.Id),StringComparer.OrdinalIgnoreCase);
+            foreach (var r in incoming)
+            {
+                if (!ids.Add(r.Id)) continue;
+                r.Imported = true;
+                all.Add(r);
+            }
+        });
+    }
+    public DecisionRecord LatestUndo()
+    {
+        var closed = new HashSet<string>();
+        foreach (var r in Enumerable.Reverse(Records()))
+        {
+            if (r.Imported) continue;
+            if (r.Result == "manual") break;
+            if (r.Related != null) closed.Add(r.Related);
+            if ((r.Result == "applied" || r.Result == "prepared") && !closed.Contains(r.Id) &&
+                r.Before != null && r.Before.Length == 3 && r.Before.All(v => !String.IsNullOrEmpty(v)) && !String.IsNullOrEmpty(r.Target)) return r;
+        }
+        return null;
+    }
+}

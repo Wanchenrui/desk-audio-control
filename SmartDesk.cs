@@ -12,9 +12,9 @@ using Microsoft.Win32;
 
 internal static class LocalSettings
 {
-    public const string Key=@"Software\DeskAudioControl", Run=@"Software\Microsoft\Windows\CurrentVersion\Run", Name="DeskAudioControl";
-    public static string Get(string name) { using(var k=Registry.CurrentUser.OpenSubKey(Key)) return k==null?null:k.GetValue(name) as string; }
-    public static void Put(string name,string value) { using(var k=Registry.CurrentUser.CreateSubKey(Key)) k.SetValue(name,value); }
+    public const string Run=@"Software\Microsoft\Windows\CurrentVersion\Run", Name="DeskAudioControl";
+    public static string Get(string name) { return AppConfig.Store.Get(name); }
+    public static void Put(string name,string value) { AppConfig.Store.Put(name,value); }
     public static bool Startup {
         get { using(var k=Registry.CurrentUser.OpenSubKey(Run)) return k!=null && k.GetValue(Name)!=null; }
         set { using(var k=Registry.CurrentUser.CreateSubKey(Run)) { if(value) k.SetValue(Name,"\""+Application.ExecutablePath+"\" --tray"); else k.DeleteValue(Name,false); } }

@@ -3,11 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Win32;
 
 public static class SmartPolicy
 {
-    const string Settings = @"Software\DeskAudioControl\DeviceRoles";
     static readonly string[] Modes = { "auto", "speaker", "headphones", "microphone", "duplex", "show", "hide" };
     static bool Same(string a, string b) { return String.Equals(a, b, StringComparison.OrdinalIgnoreCase); }
 
@@ -22,18 +20,11 @@ public static class SmartPolicy
     }
     static string ReadSetting(SmartGroup g, string suffix)
     {
-        using (var k = Registry.CurrentUser.OpenSubKey(Settings))
-            return k == null ? null : k.GetValue(GroupHash(g) + suffix) as string;
+        return AppConfig.Store.Get("DeviceRoles/" + GroupHash(g) + suffix);
     }
     static void WriteSetting(SmartGroup g, string suffix, string value)
     {
-        using (var k = value == null ? Registry.CurrentUser.OpenSubKey(Settings, true) : Registry.CurrentUser.CreateSubKey(Settings))
-        {
-            if (k == null) return;
-            string name = GroupHash(g) + suffix;
-            if (value == null) k.DeleteValue(name, false);
-            else k.SetValue(name, value, RegistryValueKind.String);
-        }
+        AppConfig.Store.Put("DeviceRoles/" + GroupHash(g) + suffix,value);
     }
     public static string Mode(SmartGroup g)
     {
@@ -141,6 +132,6 @@ public static class SmartPolicy
     }
     public static string RoleLabel(SmartGroup g)
     {
-        return DescribeRole(g, Mode(g), AudioDiscovery.FormFactor);
+        return DescribeRole(g, Mode(g), p => { int form; return g.Forms.TryGetValue(p.Id,out form) ? form : -1; });
     }
 }

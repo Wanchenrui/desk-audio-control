@@ -12,6 +12,7 @@ public sealed class SmartGroup
 {
     public string Key, Name, Kind, Details;
     public bool Virtual, Infrastructure;
+    public readonly Dictionary<string,int> Forms = new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
     public List<AudioItem> Outputs = new List<AudioItem>();
     public List<AudioItem> Inputs = new List<AudioItem>();
     public List<string> SensedOutputs = new List<string>();
@@ -33,7 +34,6 @@ public static class AudioDiscovery
     private static readonly Regex BtAddress = new Regex(@"(?:\\DEV_|&0&)([0-9A-F]{12})(?:\\|_|$)", RegexOptions.IgnoreCase);
     private static readonly HashSet<string> SyntheticCollisions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> LiveCollisions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    private const string CollisionSettings = @"Software\DeskAudioControl\AmbiguousUsbIdentities";
     private static bool historyLoaded;
     private const string Props = @"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\";
     private const string EnumPath = @"SYSTEM\CurrentControlSet\Enum\";
@@ -243,6 +243,7 @@ public static class AudioDiscovery
                     Key = key, Name = DisplayName(device, family), Kind = family,
                     Virtual = family == "虚拟音频", Infrastructure = family == "虚拟音频" || family == "板载音频" || family == "显示器音频"
                 };
+                foreach (var row in device) group.Forms[row.Item.Id] = row.Form;
                 foreach (var item in device.Select(r => r.Item).OrderBy(i => i.Id, Compare))
                     (item.Flow == 0 ? group.Outputs : group.Inputs).Add(item);
                 foreach (var sensed in device.Where(r => r.Sensed == true))
@@ -267,8 +268,7 @@ public static class AudioDiscovery
             if (!historyLoaded)
             {
                 WithHistory(delegate {
-                    using (var settings = Registry.CurrentUser.OpenSubKey(CollisionSettings))
-                        if (settings != null) LiveCollisions.UnionWith(settings.GetValueNames());
+                    LiveCollisions.UnionWith(AppConfig.Store.Keys("AmbiguousUsbIdentities/"));
                 });
                 historyLoaded = true;
             }
@@ -276,8 +276,7 @@ public static class AudioDiscovery
             var groups = GroupRowsCore(evidence, LiveCollisions);
             if (known.Count != LiveCollisions.Count)
                 WithHistory(delegate {
-                    using (var settings = Registry.CurrentUser.CreateSubKey(CollisionSettings))
-                        foreach (string key in LiveCollisions.Except(known, Compare)) settings.SetValue(key, 1, RegistryValueKind.DWord);
+                    foreach (string key in LiveCollisions.Except(known, Compare)) AppConfig.Store.Put("AmbiguousUsbIdentities/" + key,"1");
                 });
             return groups;
         }

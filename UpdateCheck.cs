@@ -58,16 +58,8 @@ public static class UpdateCheck
 
     public static bool UseSignedInAccount
     {
-        get
-        {
-            using (var key = Registry.CurrentUser.OpenSubKey(Settings))
-                return key != null && Object.Equals(key.GetValue("UseSignedInGitHub"), 1);
-        }
-        set
-        {
-            using (var key = Registry.CurrentUser.CreateSubKey(Settings))
-                key.SetValue("UseSignedInGitHub", value ? 1 : 0, RegistryValueKind.DWord);
-        }
+        get { return AppConfig.Store.Get("UseSignedInGitHub") == "1"; }
+        set { AppConfig.Store.Put("UseSignedInGitHub", value ? "1" : "0"); }
     }
 
     static bool ValidToken(string token)

@@ -24,20 +24,20 @@ public sealed class EndpointEvents : IDisposable
     [ComVisible(true),ClassInterface(ClassInterfaceType.None)]
     public sealed class Callback : ICallback
     {
-        public int Pending;
-        int Mark() { Interlocked.Exchange(ref Pending,1); return 0; }
-        public int OnDeviceStateChanged(string id,uint state) { return Mark(); }
-        public int OnDeviceAdded(string id) { return Mark(); }
-        public int OnDeviceRemoved(string id) { return Mark(); }
-        public int OnDefaultDeviceChanged(int flow,int role,string id) { return Mark(); }
-        public int OnPropertyValueChanged(string id,PropertyKey key) { return Mark(); }
+        internal AudioEventBus Bus;
+        int Mark(ScanReason reason) { Bus.Publish(reason); return 0; }
+        public int OnDeviceStateChanged(string id,uint state) { return Mark(ScanReason.State); }
+        public int OnDeviceAdded(string id) { return Mark(ScanReason.Added); }
+        public int OnDeviceRemoved(string id) { return Mark(ScanReason.Removed); }
+        public int OnDefaultDeviceChanged(int flow,int role,string id) { return Mark(ScanReason.Default); }
+        public int OnPropertyValueChanged(string id,PropertyKey key) { return Mark(ScanReason.Property); }
     }
     IEventsSource source;
     readonly Callback sink = new Callback();
     public bool Registered { get; private set; }
-    public bool Changed { get { return Interlocked.Exchange(ref sink.Pending,0)!=0; } }
-    public EndpointEvents()
+    internal EndpointEvents(AudioEventBus bus)
     {
+        sink.Bus = bus;
         try { source=(IEventsSource)new AudioCore.MMEnumerator(); source.RegisterEndpointNotificationCallback(sink); Registered=true; }
         catch(COMException) { }
     }

@@ -37,9 +37,10 @@ internal sealed class UpdatePage : Panel
         Setup(check, "立即检查", ButtonLook.Solid, StartCheck);
         Setup(releases, "打开发布页", ButtonLook.Soft, delegate { OpenPage(pageUrl); });
         automatic.Text = "每天在后台检查新版本"; automatic.AccessibleName = automatic.Text;
-        automatic.Set(LocalSettings.Get("AutomaticUpdates") != "0");
+        automatic.Set(AppConfig.Store.Warning == null && LocalSettings.Get("AutomaticUpdates") != "0");
         automatic.CheckedChanged += delegate {
-            LocalSettings.Put("AutomaticUpdates", automatic.Checked ? "1" : "0");
+            try { LocalSettings.Put("AutomaticUpdates", automatic.Checked ? "1" : "0"); }
+            catch (Exception e) { automatic.Set(!automatic.Checked); status.Text = e.Message; return; }
             if (automatic.Checked) CheckIfDue();
         };
         versionCard.Controls.AddRange(new Control[] { heading, status, lastCheck, check, releases, automatic });
@@ -48,7 +49,8 @@ internal sealed class UpdatePage : Panel
         signedIn.Text = "允许使用本机 GitHub 登录检查更新（Git for Windows 或 GitHub CLI）"; signedIn.AccessibleName = signedIn.Text;
         signedIn.Set(UpdateCheck.UseSignedInAccount);
         signedIn.CheckedChanged += delegate {
-            UpdateCheck.UseSignedInAccount = signedIn.Checked;
+            try { UpdateCheck.UseSignedInAccount = signedIn.Checked; }
+            catch (Exception e) { signedIn.Set(!signedIn.Checked); status.Text = e.Message; return; }
             StartCheck();
         };
         accessBody.Text = "也可单独保存此仓库的只读令牌：选择 desk-audio-control 仓库，Contents 设为 Read-only。";
@@ -153,10 +155,12 @@ internal sealed class UpdatePage : Panel
         } finally {
             running = false;
             if (!IsDisposed && !owner.IsDisposed) {
-                LocalSettings.Put("UpdateStatus", status.Text);
-                LocalSettings.Put("UpdateStatusVersion", version);
-                LocalSettings.Put("UpdateAttemptUtc", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
-                ShowLastCheck();
+                try {
+                    LocalSettings.Put("UpdateStatus", status.Text);
+                    LocalSettings.Put("UpdateStatusVersion", version);
+                    LocalSettings.Put("UpdateAttemptUtc", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
+                    ShowLastCheck();
+                } catch (Exception e) { automatic.Set(false); status.Text += " · " + e.Message; }
                 check.Enabled = access.Enabled = signedIn.Enabled = true;
             }
         }

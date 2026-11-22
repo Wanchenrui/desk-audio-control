@@ -29,6 +29,10 @@ internal static class Theme
             using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
                 dark = key != null && Object.Equals(key.GetValue("AppsUseLightTheme"), 0);
         } catch (Exception) { }
+        Palette(dark);
+    }
+    internal static void Palette(bool dark)
+    {
         Dark = dark;
         if (dark) {
             Window = C(21,26,29); Surface = C(32,38,42); SurfaceHi = C(44,51,56); Border = C(58,67,73);

@@ -9,7 +9,8 @@ internal sealed partial class AudioPanel
 {
     void Cycle()
     {
-        RefreshDevices(false);
+        if (!hasSnapshot) { cycleOnReady = true; bus.Publish(ScanReason.Refresh); return; }
+        defaultOut = AudioCore.Default(0,1);
         var options = OutputCycle();
         if (options.Count == 0) throw new InvalidOperationException("当前没有可切换的日常播放设备。");
         var current = groups.FirstOrDefault(g => ContainsId(g.Outputs, defaultOut));
@@ -20,12 +21,21 @@ internal sealed partial class AudioPanel
     {
         if (p == null) return;
         AudioCore.Route(p.Id, p.Flow);
-        Notify((p.Flow == 0 ? "默认输出" : "默认输入") + " · " + p.Name);
+        actionRevision++;
+        quietUntil = clock.ElapsedMilliseconds + 30000;
+        if (p.Flow == 0)
+        {
+            defaultOut = p.Id;
+            RecordManual(p);
+        }
+        else defaultIn = p.Id;
+        ShowRoute(p.Name,p.Id,false);
     }
     void Toggle(AudioItem p)
     {
         if (p == null) return;
         bool b = !AudioCore.Muted(p.Id);
+        quietUntil = clock.ElapsedMilliseconds + 30000;
         AudioCore.SetMute(p.Id, b);
         Notify(p.Name + (b ? " 已静音" : " 已取消静音"));
     }
@@ -33,7 +43,7 @@ internal sealed partial class AudioPanel
     {
         string id = AudioCore.Default(1, 1);
         if (id == null) throw new InvalidOperationException("未找到默认录音设备。");
-        Toggle(AudioCore.List(1).FirstOrDefault(p => Same(p.Id, id)));
+        Toggle(new AudioItem { Id = id, Flow = 1, Name = "默认话筒" });
     }
 
     // Result messages show in the status line while the window is open, otherwise as a tray balloon.
@@ -49,7 +59,7 @@ internal sealed partial class AudioPanel
     }
     void Act(Action fn, bool refresh = true)
     {
-        try { fn(); if (refresh && !IsDisposed) RefreshDevices(false); }
+        try { fn(); if (refresh && !IsDisposed) bus.Publish(ScanReason.Refresh); }
         catch (Exception e) { Fail(e.Message); }
     }
 
@@ -69,7 +79,7 @@ internal sealed partial class AudioPanel
         var p = Chosen(0); if (p == null) return;
         int old = AudioCore.Balance(p.Id);
         using (var dialog = new BalanceDialog(p.Name, old))
-            if (dialog.ShowDialog(this) == DialogResult.OK) AudioCore.SetBalance(p.Id, dialog.Value);
+            if (dialog.ShowDialog(this) == DialogResult.OK) { quietUntil = clock.ElapsedMilliseconds + 30000; AudioCore.SetBalance(p.Id, dialog.Value); }
     }
     void Restore()
     {
@@ -85,6 +95,7 @@ internal sealed partial class AudioPanel
         {
             if (msg.WParam.ToInt32() == 1) Act(Cycle);
             if (msg.WParam.ToInt32() == 2) Act(ToggleDefaultMic);
+            if (msg.WParam.ToInt32() == 3) Act(() => UndoRoute("热键"));
         }
         base.WndProc(ref msg);
     }

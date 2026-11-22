@@ -223,57 +223,41 @@ public static class AudioCore
     public static void Route(string id, int flow)
     {
         if (String.IsNullOrEmpty(id)) throw new ArgumentNullException("id");
+        RouteRoles(new[] { id,id,id },flow,null);
+    }
+
+    internal static string[] Defaults(int flow)
+    {
+        return new[] { Default(flow,0), Default(flow,1), Default(flow,2) };
+    }
+
+    internal static void RouteRoles(string[] targets, int flow, string[] expected)
+    {
         CheckFlow(flow);
         var en = (IEnum)new MMEnumerator();
-        IDevice dev = null;
         IPolicy policy = null;
         try
         {
-            en.GetDevice(id, out dev);
-            int actualFlow;
-            uint state;
-            ((IEndpoint)dev).GetDataFlow(out actualFlow);
-            dev.GetState(out state);
-            if (actualFlow != flow || state != Active)
-                throw new InvalidOperationException("The selected endpoint is unavailable or has the wrong direction.");
-            var old = new string[3];
-            bool changed = false;
-            for (int role = 0; role < 3; role++)
+            foreach (string target in System.Linq.Enumerable.Distinct(targets,StringComparer.OrdinalIgnoreCase))
             {
-                old[role] = ReadDefault(en, flow, role);
-                changed |= !Same(old[role], id);
-            }
-            if (!changed) return;
-            policy = (IPolicy)new PolicyClient();
-            try
-            {
-                for (int role = 0; role < 3; role++) policy.SetDefaultEndpoint(id, role);
-                for (int role = 0; role < 3; role++)
-                    if (!Same(ReadDefault(en, flow, role), id))
-                        throw new InvalidOperationException("Windows did not apply the selected default endpoint.");
-            }
-            catch (Exception cause)
-            {
-                bool restored = true;
-                for (int role = 0; role < 3; role++)
+                IDevice dev = null;
+                try
                 {
-                    try
-                    {
-                        if (old[role] != null && !Same(ReadDefault(en, flow, role), old[role]))
-                            policy.SetDefaultEndpoint(old[role], role);
-                    }
-                    catch (COMException) { restored = false; }
+                    en.GetDevice(target,out dev);
+                    int direction; uint state;
+                    ((IEndpoint)dev).GetDataFlow(out direction);
+                    dev.GetState(out state);
+                    if (direction != flow || state != Active) throw new InvalidOperationException("端口已断开或方向不匹配。");
                 }
-                for (int role = 0; role < 3; role++)
-                {
-                    try { if (!Same(ReadDefault(en, flow, role), old[role])) restored = false; }
-                    catch (COMException) { restored = false; }
-                }
-                if (!restored) throw new InvalidOperationException("Routing failed and Windows could not restore every previous default.", cause);
-                throw;
+                finally { Release(dev); }
             }
+            RouteTransaction.Apply(targets, role => ReadDefault(en,flow,role), (role,target) =>
+            {
+                if (policy == null) policy = (IPolicy)new PolicyClient();
+                policy.SetDefaultEndpoint(target,role);
+            }, expected);
         }
-        finally { Release(policy); Release(dev); Release(en); }
+        finally { Release(policy); Release(en); }
     }
 
     static T WithService<TService, T>(string id, Func<TService, T> action, bool renderOnly = false)

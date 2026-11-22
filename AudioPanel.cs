@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 // Window shell, tray icon, hot keys and the refresh loop.
@@ -16,7 +17,19 @@ internal sealed partial class AudioPanel : Form
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     readonly EventWaitHandle openEvent;
-    readonly EndpointEvents events = new EndpointEvents();
+    readonly PanelAudio audio;
+    readonly AudioEventBus bus = new AudioEventBus();
+    readonly EndpointEvents events;
+    readonly System.Windows.Forms.Timer scanTimer = new System.Windows.Forms.Timer();
+    readonly OutputArrivals arrivals = new OutputArrivals();
+    readonly DecisionJournal journal = new DecisionJournal(AppConfig.Folder);
+    RouteOverlay overlay;
+    const ScanReason Hardware = ScanReason.Added | ScanReason.Removed | ScanReason.State | ScanReason.Property | ScanReason.Default;
+    ScanReason pendingReasons;
+    long pendingSince;
+    long nextJournalCleanup;
+    long actionRevision, quietUntil;
+    bool hotUndo, hasSnapshot, cycleOnReady;
     readonly PlugChanges plugs = new PlugChanges();
     readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
     readonly NotifyIcon tray = new NotifyIcon();
@@ -27,15 +40,19 @@ internal sealed partial class AudioPanel : Form
     Surface[] pages;
     UpdatePage updates;
     List<SmartGroup> groups = new List<SmartGroup>();
-    HashSet<string> previousOutputs;
     string defaultOut, defaultIn, portSignature, hint = "";
     bool busy, closing, hotOut, hotMic, preferNew, built;
-    long nextScan, nextView, nextPoll, statusUntil;
+    long nextScan = long.MaxValue, nextView, nextPoll, statusUntil;
+    readonly ScanGate gate = new ScanGate(400, 2000);
 
     int P(float v) { return Theme.Px(this, v); }
 
-    public AudioPanel(bool hidden, EventWaitHandle open)
+    public AudioPanel(bool hidden, EventWaitHandle open) : this(hidden,open,new PanelAudio()) { }
+
+    internal AudioPanel(bool hidden, EventWaitHandle open, PanelAudio audio)
     {
+        this.audio = audio;
+        events = new EndpointEvents(bus);
         openEvent = open; preferNew = LocalSettings.Get("PreferNewOutput") == "1";
         Text = "桌面音频"; Icon = DeskIcon.Create(); Font = Theme.Face(9f);
         AutoScaleMode = AutoScaleMode.None; DoubleBuffered = true;
@@ -51,22 +68,26 @@ internal sealed partial class AudioPanel : Form
         IntPtr window = Handle;
         updates.Start();
         hotOut = RegisterHotKey(window, 1, 0x4003, (uint)Keys.F8); hotMic = RegisterHotKey(window, 2, 0x4003, (uint)Keys.F7);
+        hotUndo = RegisterHotKey(window, 3, 0x4003, (uint)Keys.F9);
         UpdateShortcuts();
         built = true; LayoutAll(); Chrome();
-        RefreshDevices(false);
-        LocalSettings.Log("hotkey-output=" + hotOut + " hotkey-mic=" + hotMic + " endpoint-events=" + events.Registered + " groups=" + groups.Count + " daily=" + groups.Count(Primary) + " cycle=" + OutputCycle().Count + " status=" + status.Text);
-        timer.Interval = 60; timer.Tick += OnTick; timer.Start();
+        bus.Wake += WakeScanner;
+        scanTimer.Tick += delegate { PumpScanner(); };
+        bus.Publish(ScanReason.Startup);
+        WakeScanner(); // A callback may already be waiting from before the window handle existed.
+        if (AppConfig.Store.Warning != null) { hint = AppConfig.Store.Warning; SetStatus(hint,Tone.Warn); }
+        timer.Interval = hidden ? 420 : 60; timer.Tick += OnTick; timer.Start();
         Theme.Changed += OnThemeChanged;
         VisibleChanged += delegate { timer.Interval = Visible ? 60 : 420; };
         FormClosing += (s, e) => { if (!closing && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Hide(); } };
         FormClosed += (s, e) => {
-            Theme.Changed -= OnThemeChanged; timer.Stop(); events.Dispose(); foreach (var peak in peaks) peak.Dispose();
-            UnregisterHotKey(window, 1); UnregisterHotKey(window, 2);
+            Theme.Changed -= OnThemeChanged; timer.Stop(); bus.Wake -= WakeScanner; scanTimer.Dispose(); events.Dispose(); if (overlay != null) overlay.Dispose(); foreach (var peak in peaks) peak.Dispose();
+            UnregisterHotKey(window, 1); UnregisterHotKey(window, 2); UnregisterHotKey(window, 3);
             tray.Visible = false; tray.Dispose(); Application.ExitThread();
         };
     }
 
-    public void Open() { Show(); WindowState = FormWindowState.Normal; Activate(); RefreshDevices(false); }
+    public void Open() { Show(); WindowState = FormWindowState.Normal; Activate(); bus.Publish(ScanReason.Refresh); }
 
     void BuildShell()
     {
@@ -102,7 +123,7 @@ internal sealed partial class AudioPanel : Form
         var menu = new ContextMenuStrip();
         menu.Opening += delegate
         {
-            menu.Items.Clear(); RefreshDevices(false); ThemedMenu.Apply(menu);
+            menu.Items.Clear(); bus.Publish(ScanReason.Refresh); ThemedMenu.Apply(menu);
             menu.Items.Add("打开音频面板", null, (o, a) => Open());
             var picks = OutputCycle();
             if (picks.Count > 0) menu.Items.Add(new ToolStripSeparator());
@@ -114,25 +135,85 @@ internal sealed partial class AudioPanel : Form
             }
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("默认话筒静音 / 取消静音", null, (o, a) => Act(ToggleDefaultMic));
+            menu.Items.Add("撤销最近自动切换", null, (o, a) => Act(() => UndoRoute("托盘")));
+            menu.Items.Add("决策记录…", null, (o, a) => Act(ShowDecisions,false));
             menu.Items.Add("退出", null, (o, a) => { closing = true; Close(); });
         };
         tray.ContextMenuStrip = menu; tray.Icon = Icon; tray.Text = "桌面音频"; tray.Visible = true;
         tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) Open(); };
     }
 
-    // Runs every 60 ms while visible and every 420 ms in the tray. Device polling stays at 420 ms; only the meters run faster.
+    // Endpoint events wake the scan scheduler independently of the tray polling interval.
     void OnTick(object sender, EventArgs e)
     {
         long now = clock.ElapsedMilliseconds;
+        if (now >= nextScan)
+        {
+            nextScan = long.MaxValue;
+            bus.Publish(ScanReason.Poll);
+        }
         if (now >= nextPoll)
         {
             nextPoll = now + 420;
+            if (now >= nextJournalCleanup)
+            {
+                nextJournalCleanup = now + 24L * 60 * 60 * 1000;
+                try { journal.Records(); } catch (Exception error) { Fail("决策记录无法读取 · " + error.Message); }
+            }
             if (openEvent.WaitOne(0)) Open();
             if (statusUntil != 0 && now >= statusUntil) { statusUntil = 0; SetStatus(hint, Tone.Muted); }
-            if (events.Changed || now >= nextScan) RefreshDevices(true);
-            else if (Visible && rail.Index == 0 && now >= nextView && !volume[0].Dragging && !volume[1].Dragging) { nextView = now + 1800; RefreshLevels(); }
+            if (!gate.Running && Visible && rail.Index == 0 && now >= nextView && !volume[0].Dragging && !volume[1].Dragging) { nextView = now + 1800; RefreshLevels(); }
         }
         if (Visible && WindowState != FormWindowState.Minimized && rail.Index == 0 && !busy) FeedMeters();
+    }
+
+    // Endpoint callbacks only post a wakeup. All scheduling state belongs to the window thread.
+    void WakeScanner()
+    {
+        try { if (IsHandleCreated && !IsDisposed) BeginInvoke((Action)PumpScanner); }
+        catch (InvalidOperationException) { }
+    }
+
+    void PumpScanner()
+    {
+        if (closing || IsDisposed) return;
+        scanTimer.Stop();
+        long now = clock.ElapsedMilliseconds;
+        long since;
+        ScanReason batch = bus.Drain(out since);
+        if (pendingReasons == ScanReason.None && batch != ScanReason.None) pendingSince = since;
+        pendingReasons |= batch;
+        if ((batch & Hardware) != 0)
+            gate.Request(now);
+        else if (batch != ScanReason.None) gate.Refresh(now);
+        if (gate.Running || !gate.Pending) return;
+        if (gate.TryBegin(now))
+        {
+            var reasons = pendingReasons;
+            pendingReasons = ScanReason.None;
+            RunScan(reasons,pendingSince);
+        }
+        else { scanTimer.Interval = gate.Delay(now); scanTimer.Start(); }
+    }
+
+    async void RunScan(ScanReason reasons,long since)
+    {
+        long revision = actionRevision;
+        try
+        {
+            var snap = await Task.Run((Func<Snapshot>)TakeSnapshot);
+            if (closing || IsDisposed) return;
+            PumpScanner(); // Pick up hardware changes that arrived while Windows was enumerating.
+            if ((pendingReasons & Hardware) != 0) { pendingReasons |= reasons; pendingSince = since; }
+            else if (revision == actionRevision) Apply(snap,reasons,since);
+            else { pendingReasons |= reasons; pendingSince = since; bus.Publish(ScanReason.Refresh); }
+        }
+        catch (Exception e) { if (!closing && !IsDisposed) ScanFailed(e); }
+        finally
+        {
+            gate.End();
+            if (!closing && !IsDisposed) { nextScan = NextScanAt(); PumpScanner(); }
+        }
     }
 
     // The system theme event arrives on a background thread.

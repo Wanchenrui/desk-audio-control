@@ -46,26 +46,19 @@ internal sealed partial class AudioPanel
         };
     }
 
-    void RefreshDevices(bool allowRoute)
+    void Apply(Snapshot snap, ScanReason reasons,long since)
     {
-        if (busy || IsDisposed) return;
         busy = true;
         try
         {
-            groups = AudioDiscovery.Scan(); plugs.Observe(groups);
-            defaultOut = AudioCore.Default(0, 1); defaultIn = AudioCore.Default(1, 1);
-            var outputGroups = groups.Where(g => !g.Virtual && Eligible(g, 0) && SmartPolicy.Choices(g, 0, false).Count > 0 &&
-                (!g.Infrastructure || plugs.Recent(g, 0) || SmartPolicy.Mode(g) != "auto")).ToList();
-            if (allowRoute && preferNew && previousOutputs != null)
-            {
-                var added = outputGroups.Where(g => !previousOutputs.Contains(g.Key)).ToList();
-                if (added.Count == 1)
-                {
-                    var next = SmartPolicy.Pick(added[0], 0, defaultOut);
-                    if (next != null && !Same(next.Id, defaultOut)) { AudioCore.Route(next.Id, 0); defaultOut = next.Id; }
-                }
-            }
-            previousOutputs = new HashSet<string>(outputGroups.Select(g => g.Key), StringComparer.OrdinalIgnoreCase);
+            groups = snap.Groups; plugs.Observe(groups);
+            defaultOut = snap.Out; defaultIn = snap.In;
+            var physical = groups.Where(g => !g.Virtual && g.Outputs.Count > 0 &&
+                (!g.Infrastructure || plugs.Recent(g,0) || g.SensedOutputs.Count != 0 || g.Kind == "显示器音频")).ToList();
+            var added = arrivals.Observe(physical.Select(g => g.Key));
+            hasSnapshot = true;
+            if (cycleOnReady) { cycleOnReady = false; Act(Cycle); }
+            else if (preferNew && added.Length > 0) ConsiderRoute(reasons, since, physical.Where(g => added.Contains(g.Key)).ToList());
             var ordered = groups.OrderBy(g => !Primary(g)).ThenBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
             var shown = ordered.Where(g => Primary(g) || showAll.Checked).ToList();
             counts.Text = "日常设备  " + ordered.Count(Primary) + (showAll.Checked ? "    ·    全部 " + ordered.Count : "");
@@ -77,12 +70,22 @@ internal sealed partial class AudioPanel
             if (statusUntil == 0) SetStatus(hint, Tone.Muted);
             string tip = "桌面音频 · " + o; tray.Text = tip.Length > 62 ? tip.Substring(0, 62) : tip;
         }
-        catch (Exception e)
-        {
-            statusUntil = 0; SetStatus("设备状态暂时不可用 · " + e.Message, Tone.Warn); LocalSettings.Log(e.ToString());
-        }
-        finally { busy = false; nextScan = clock.ElapsedMilliseconds + (events.Registered ? 10000 : 2500); }
+        finally { busy = false; }
     }
+
+    void ScanFailed(Exception e) { statusUntil = 0; SetStatus("设备状态暂时不可用 · " + e.Message, Tone.Warn); LocalSettings.Log(e.ToString()); }
+
+    // What a scan reads from Windows. It touches no window state, so it can be taken on any thread.
+    sealed class Snapshot
+    {
+        public List<SmartGroup> Groups;
+        public string Out, In;
+    }
+    Snapshot TakeSnapshot()
+    {
+        return new Snapshot { Groups = audio.Scan(), Out = audio.Default(0, 1), In = audio.Default(1, 1) };
+    }
+    long NextScanAt() { return clock.ElapsedMilliseconds + (events.Registered ? 10000 : 2500); }
 
     void ShowSelection()
     {
@@ -138,8 +141,14 @@ internal sealed partial class AudioPanel
                 bool current = Same(p.Id, f == 0 ? defaultOut : defaultIn);
                 route[f].Text = current ? "当前默认" : "设为默认"; route[f].On = current;
             }
-            catch (COMException) { laneValue[f].Text = "离线"; }
+            catch (Exception e) { if (!EndpointUnavailable(e)) throw; laneValue[f].Text = "离线"; }
         }
+    }
+
+    static bool EndpointUnavailable(Exception e)
+    {
+        return e is COMException || e is InvalidCastException || e is ArgumentException ||
+            e is System.IO.FileNotFoundException || e is UnauthorizedAccessException;
     }
 
     // Peak is linear 0..1; the meter shows it on a 54 dB scale.
@@ -149,8 +158,7 @@ internal sealed partial class AudioPanel
         {
             var p = chosen[f]; float v = 0f;
             try { if (p != null) v = peaks[f].Read(p.Id); else peaks[f].Reset(); }
-            catch (COMException) { }
-            catch (InvalidCastException) { }
+            catch (Exception e) { if (!EndpointUnavailable(e)) throw; }
             meter[f].Feed(v <= 0.002f ? 0f : (float)((20.0 * Math.Log10(v) + 54.0) / 54.0));
         }
     }
