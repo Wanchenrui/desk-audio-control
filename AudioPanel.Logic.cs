@@ -12,8 +12,7 @@ internal sealed partial class AudioPanel
     AudioItem Chosen(int flow) { return chosen[flow]; }
     bool Eligible(SmartGroup g, int flow)
     {
-        return SmartPolicy.PrimaryForFlow(g, groups, flow, flow == 0 ? defaultOut : defaultIn) ||
-               (SmartPolicy.Mode(g) == "auto" && !g.Virtual && plugs.Recent(g, flow));
+        return SmartPolicy.PrimaryForFlow(g, groups, flow, flow == 0 ? defaultOut : defaultIn);
     }
     bool Primary(SmartGroup g) { return Eligible(g, 0) || Eligible(g, 1); }
     string NameFor(string id, int flow)
@@ -46,6 +45,27 @@ internal sealed partial class AudioPanel
         };
     }
 
+    void AssessPresence(Snapshot snap,bool remember)
+    {
+        long now=clock.ElapsedMilliseconds;
+        var previous=new HashSet<string>(groups.SelectMany(g=>g.Outputs.Concat(g.Inputs)).Select(p=>p.Id),StringComparer.OrdinalIgnoreCase);
+        var next=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
+        if (corrections==null) corrections=DevicePresence.Corrections(journal.Records());
+        foreach (var g in snap.Groups)
+        {
+            int count; corrections.TryGetValue(g.Key,out count);
+            foreach (var p in g.Outputs.Concat(g.Inputs)) {
+                long until;
+                arrivalsUntil.TryGetValue(p.Id,out until);
+                if (hasSnapshot && !previous.Contains(p.Id)) until=now+30000;
+                if (until>now) next[p.Id]=until;
+                p.Presence=DevicePresence.Assess(p,snap.Signals.Audible.Contains(p.Id),until>now,
+                    selectedUntil>now && Same(selectedPort,p.Id),count);
+            }
+        }
+        if (remember) arrivalsUntil=next;
+    }
+
     void Apply(Snapshot snap, ScanReason reasons,long since)
     {
         busy = true;
@@ -54,10 +74,11 @@ internal sealed partial class AudioPanel
             lastScanError = null;
             if (!hasSnapshot) RestoreQuietPeriod();
             var previous = groups;
-            groups = snap.Groups; plugs.Observe(groups);
+            AssessPresence(snap,true);
+            groups = snap.Groups;
             defaultOut = snap.Outputs[1]; defaultIn = snap.Inputs[1];
-            var physical = groups.Where(g => !g.Virtual && g.Outputs.Count > 0 &&
-                (!g.Infrastructure || plugs.Recent(g,0) || g.SensedOutputs.Count != 0 || g.Kind == "显示器音频")).ToList();
+            var physical = groups.Where(g => !g.Virtual && g.Outputs.Any(DevicePresence.Available) &&
+                (!g.Infrastructure || g.Outputs.Any(DevicePresence.Confirmed) || g.Kind == "显示器音频")).ToList();
             var added = new HashSet<string>(arrivals.Observe(physical.Select(g => g.Key)),StringComparer.OrdinalIgnoreCase);
             if (hasSnapshot)
             {
@@ -141,7 +162,10 @@ internal sealed partial class AudioPanel
         roleButton.Enabled = g != null;
         roleButton.Text = g == null ? "识别用途" : "用途 · " + modeText[Math.Max(0, Array.IndexOf(modes, SmartPolicy.Mode(g)))];
         heroName.Text = g == null ? "等待设备连接" : g.Name;
-        heroDetail.Text = g == null ? "接入 USB 或蓝牙音频设备后会自动出现" : g.Details;
+        var port=g==null ? null : SmartPolicy.Pick(g,0,defaultOut) ?? g.Outputs.Concat(g.Inputs).FirstOrDefault();
+        var state=port==null ? null : port.Presence;
+        heroDetail.Text = g == null ? "接入 USB 或蓝牙音频设备后会自动出现" : g.Details +
+            (state==null || g.Virtual ? "" : " · "+state.State+" · "+state.Reason);
         hero.Glyph = g == null ? "" : GlyphFor(g, SmartPolicy.RoleLabel(g));
         hero.Live = g != null && (ContainsId(g.Outputs, defaultOut) || ContainsId(g.Inputs, defaultIn));
         hero.Invalidate();

@@ -52,7 +52,7 @@ internal sealed partial class AudioPanel
         static SmartGroup Group(string id,string name)
         {
             var g = new SmartGroup { Key = id, Name = name, Kind = "USB", Details = "1 路播放" };
-            g.Outputs.Add(new AudioItem { Id = id, Name = name, Flow = 0, State = 1 });
+            g.Outputs.Add(new AudioItem { Id = id, Name = name, Flow = 0, State = 1, JackConnected=true });
             return g;
         }
         public override string Default(int flow,int role) { return flow == 0 ? Roles[role] : null; }

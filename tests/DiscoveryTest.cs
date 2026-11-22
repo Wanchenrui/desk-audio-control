@@ -44,6 +44,7 @@ public static class DiscoveryTest {
         var analogIn=R("line",1,2,@"HDAUDIO\codec",null,null,null,"Codec");
         analogOut.Sensed=true;analogIn.Sensed=false;
         var analog=AudioDiscovery.GroupRows(new[]{analogOut,analogIn})[0];
+        Check(analogIn.Item.JackConnected==false,"explicit unplugged jack survives grouping");
         Check(analog.SensedOutputs.SequenceEqual(new[]{"jack"})&&analog.SensedInputs.Count==0,"Analog jack presence stays scoped to the confirmed direction");
     }
 }

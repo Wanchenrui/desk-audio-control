@@ -57,20 +57,21 @@ public static class SmartPolicy
     internal static List<AudioItem> FilterPorts(SmartGroup g, int flow, bool allPorts, string mode)
     {
         var candidates = Ports(g, flow);
-        if (allPorts || Allowed(mode, flow)) return new List<AudioItem>(candidates);
+        if (allPorts) return new List<AudioItem>(candidates);
+        if (Allowed(mode,flow)) return candidates.Where(DevicePresence.Available).ToList();
         return new List<AudioItem>();
     }
     internal static bool IsPrimary(SmartGroup g, List<SmartGroup> all, int flow, string defaultId, Func<SmartGroup,string> modeOf)
     {
         string mode = modeOf(g);
         var ports = Ports(g, flow);
-        if (ports.Count == 0 || !Allowed(mode, flow)) return false;
+        if (!ports.Any(DevicePresence.Available) || !Allowed(mode, flow)) return false;
         if (mode != "auto") return true;
         if (g.Virtual) return false;
-        if (!g.Infrastructure || ports.Any(p => Same(p.Id, defaultId))) return true;
+        if (ports.Any(DevicePresence.Confirmed) || !g.Infrastructure || ports.Any(p => Same(p.Id, defaultId))) return true;
         // A real built-in, HDMI or other infrastructure endpoint is a fallback for its own direction.
         return !all.Any(other => {
-            if (other.Virtual || Ports(other, flow).Count == 0) return false;
+            if (other.Virtual || !Ports(other,flow).Any(DevicePresence.Available)) return false;
             string otherMode = modeOf(other);
             return (!other.Infrastructure || otherMode != "auto") && Allowed(otherMode, flow);
         });
@@ -108,7 +109,7 @@ public static class SmartPolicy
     }
     internal static AudioItem SelectStereo(SmartGroup g,string defaultId,string remembered)
     {
-        return SelectPort(g.Outputs.Where(p => !HandsFree(p) && p.Channels != 1).ToList(),0,defaultId,remembered);
+        return SelectPort(g.Outputs.Where(p => DevicePresence.Available(p) && !HandsFree(p) && p.Channels != 1).ToList(),0,defaultId,remembered);
     }
     internal static AudioItem SelectPort(List<AudioItem> choices, int flow, string defaultId, string rememberedId)
     {

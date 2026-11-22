@@ -63,6 +63,8 @@ public static class SmartPolicyTest
         var twins = AudioDiscovery.GroupRows(new[] { model2, sameModel });
         Check(twins.Count == 2 && twins.Select(g=>g.Key).Distinct().Count() == 2, "simultaneous identical serial-less hardware remains separate");
 
+        usbOut.Item.Presence=DevicePresence.Assess(new AudioItem { JackConnected=false },false,false,false,0);
+        Check(!SmartPolicy.IsPrimary(usb,plugged,0,null,mode),"an unplugged output does not mask fallback devices");
         var hands = E("hf",0,@"BTHENUM\MOCK","Mock Hands-Free AG Audio",5).Item;
         var stereo = E("a2dp",0,@"BTHENUM\MOCK","Mock Stereo",3).Item;
         var extra = E("extra",0,@"BTHENUM\MOCK","Mock output",3).Item;

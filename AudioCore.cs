@@ -7,6 +7,9 @@ public sealed class AudioItem
     public string Id, Name, Bus;
     public int Flow, State, Channels;
     public bool HandsFreeProfile;
+    internal bool ParentPresent;
+    internal bool? JackConnected, LinkConnected;
+    internal PresenceResult Presence;
 }
 
 public static class AudioCore

@@ -184,7 +184,7 @@ internal sealed class DecisionJournal
         if (changed != null) changed();
     }
     public void Add(DecisionRecord record) { Change(all => all.Add(record)); }
-    public void Clear() { JsonFile.Locked(path,delegate { Save(new List<DecisionRecord>()); return true; }); }
+    public void Clear() { Change(all=>all.Clear()); }
     public void Export(string file) { JsonFile.Save(file,new Document { Version = 1, Entries = Records() }); }
     public void Import(string file)
     {

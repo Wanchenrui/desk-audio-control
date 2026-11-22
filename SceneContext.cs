@@ -84,8 +84,10 @@ internal static class SceneContext
             {
                 bool comm = RouteTransaction.Equal(p.Id,roles[2]);
                 sawCommunication |= comm;
+                bool active=false;
                 result.Sessions += AudioCore.ActiveSessions(p.Id,sessionPid => {
                     if (ignoreOwnStreams && sessionPid==self) return;
+                    active=true;
                     string kind = Category(sessionPid);
                     categories.Add(kind);
                     // Unknown shared-role sessions can be browser calls. Dedicated communications
@@ -93,6 +95,11 @@ internal static class SceneContext
                     if (kind == "会议" || (comm && !RouteTransaction.Equal(roles[1],p.Id))) result.Communicating = true;
                     if (comm && kind != "音乐" && kind != "影音" && kind != "游戏") result.SharedBusy = true;
                 });
+                if (active && ignoreOwnStreams) {
+                    try { if (AudioCore.Peak(p.Id)>.001f) result.Audible.Add(p.Id); }
+                    catch (COMException) { }
+                    catch (InvalidCastException) { }
+                }
             }
             result.Unknown = !sawCommunication;
             if (result.Foreground == null)

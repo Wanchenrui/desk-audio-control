@@ -66,6 +66,7 @@ internal sealed partial class AudioPanel
 
     void RecordChoice(string source,string id,string previous)
     {
+        selectedPort=id; selectedUntil=clock.ElapsedMilliseconds+30000;
         var g = groups.FirstOrDefault(x => ContainsId(x.Outputs,id));
         var last = journal.LatestUndo();
         if (last != null && last.DeviceKey != null && Same(last.Target,previous) && !Same(last.Target,id))
@@ -97,7 +98,8 @@ internal sealed partial class AudioPanel
                 Speaker = mode == "speaker" || (infer && form == 1), Stereo = pick.Channels >= 2,
                 RestoreStereo = bt && g.Outputs.Any(p => Same(p.Id,defaultOut) && (SmartPolicy.HandsFree(p) || p.Channels == 1)),
                 Preference = trust.Preference, Recent = added.Contains(g.Key,StringComparer.OrdinalIgnoreCase),
-                Level = autonomy < 0 ? trust.Level : autonomy });
+                Presence = pick.Presence==null ? null : pick.Presence.State+" · "+pick.Presence.Reason,
+                Level = Math.Min(pick.Presence==null ? 1 : pick.Presence.MaxLevel,autonomy < 0 ? trust.Level : autonomy) });
         }
         return candidates.ToArray();
     }
@@ -203,7 +205,12 @@ internal sealed partial class AudioPanel
             !SameRoles(expectedInputs,snap.Inputs) || snap.Signals.ObservedScene(scenes.Current) != offer.Scene)
             mismatch = "设备或场景已经变化";
         var recent = offer.Evidence.Ranked.Where(p => p.Recent).Select(p => p.Key).ToArray();
-        var row = PlanRoute(snap,"执行建议",recent,since);
+        AssessPresence(snap,false);
+        var previous=groups;
+        DecisionRecord row;
+        groups=snap.Groups;
+        try { row=PlanRoute(snap,"执行建议",recent,since); }
+        finally { groups=previous; }
         if (mismatch == null && (row.Result != "offer" || !Same(row.Target,offer.Target) ||
             !(row.InputAfter == null && offer.InputAfter == null || SameRoles(row.InputAfter,offer.InputAfter))))
             mismatch = row.Evidence.SkipReason() ?? "当前建议已变化";

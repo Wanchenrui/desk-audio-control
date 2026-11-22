@@ -153,7 +153,7 @@ internal sealed partial class AudioPanel
                     replay += "\n\n活动播放会话 " + e.Sessions + " · 积极度 " + e.Sensitivity + "%";
                     foreach (var p in e.Ranked.Where(p => p != null))
                         replay += "\n" + p.Name + " · L" + p.Level + " · 偏好 " + p.Preference + " · 场景适配 " + p.SceneFit(e.Scene) +
-                            (p.Recent ? " · 新接入" : "") + (p.Stereo ? " · 多声道" : "") + (p.RestoreStereo ? " · 避免蓝牙免提" : "") + " · 总分 " + p.Score(e);
+                            (p.Recent ? " · 新接入" : "") + (p.Stereo ? " · 多声道" : "") + (p.RestoreStereo ? " · 避免蓝牙免提" : "") + " · 总分 " + p.Score(e) + (p.Presence==null ? "" : " · "+p.Presence);
                     if (record.InputAfter != null) replay += "\n" + record.Reason;
                 }
                 if (record.ReasonCode != null) replay += "\n原因码 " + record.ReasonCode;

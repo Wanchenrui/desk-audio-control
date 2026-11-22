@@ -3,6 +3,8 @@ $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $sources = @(
+    (Join-Path $project 'BluetoothLink.cs')
+    (Join-Path $project 'DevicePresence.cs')
     (Join-Path $project 'SwitchGuard.cs')
     (Join-Path $project 'EndpointCache.cs')
     (Join-Path $project 'ScanGate.cs')
@@ -24,7 +26,7 @@ $tempName = 'DeskAudio.Tests.' + [Guid]::NewGuid().ToString('N') + '.exe'
 $tempExe = Join-Path ([IO.Path]::GetTempPath()) $tempName
 
 try {
-    foreach ($suite in 'DiscoveryTest', 'SmartPolicyTest', 'EndpointCacheTest', 'ScanGateTest', 'FoundationTest', 'SceneSwitchTest', 'TuningTest') {
+    foreach ($suite in 'DiscoveryTest', 'PresenceTest', 'SmartPolicyTest', 'EndpointCacheTest', 'ScanGateTest', 'FoundationTest', 'SceneSwitchTest', 'TuningTest') {
         $testSource = Join-Path $PSScriptRoot ($suite + '.cs')
         & $compiler /nologo /target:exe /platform:x64 /codepage:65001 /r:System.Web.Extensions.dll "/resource:$project\eq\presets.txt,DeskAudio.EQ.txt" "/resource:$project\eq\AutoEq-LICENSE.txt,DeskAudio.EQ.License" "/out:$tempExe" @sources $testSource
         if ($LASTEXITCODE -ne 0) { throw "Could not compile $suite." }

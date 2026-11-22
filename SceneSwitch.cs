@@ -8,6 +8,7 @@ internal sealed class SceneSignals
     public string Foreground;
     public bool Capturing, Camera, Communicating, SharedBusy, Away, Unknown, ControlForeground;
     public int Sessions, Hour;
+    public readonly HashSet<string> Audible=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     public string Classify()
     {
@@ -57,6 +58,7 @@ internal sealed class RouteCandidate
     public bool Speaker { get; set; }
     public bool Stereo { get; set; }
     public bool RestoreStereo { get; set; }
+    public string Presence { get; set; }
     public int Preference { get; set; }
     public int Level { get; set; }
 

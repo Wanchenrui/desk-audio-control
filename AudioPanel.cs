@@ -31,7 +31,10 @@ internal sealed partial class AudioPanel : Form
     long nextJournalCleanup;
     long actionRevision, quietUntil;
     bool hotUndo, hasSnapshot, cycleOnReady;
-    readonly PlugChanges plugs = new PlugChanges();
+    Dictionary<string,int> corrections;
+    Dictionary<string,long> arrivalsUntil=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
+    string selectedPort;
+    long selectedUntil;
     readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
     readonly NotifyIcon tray = new NotifyIcon();
     readonly Stopwatch clock = Stopwatch.StartNew();
@@ -72,6 +75,7 @@ internal sealed partial class AudioPanel : Form
         hotUndo = RegisterHotKey(window, 3, 0x4003, (uint)Keys.F9);
         UpdateShortcuts();
         built = true; LayoutAll(); Chrome();
+        journal.Changed += delegate { corrections=null; };
         bus.Wake += WakeScanner;
         scanTimer.Tick += delegate { PumpScanner(); };
         bus.Publish(ScanReason.Startup);

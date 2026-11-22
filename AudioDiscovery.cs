@@ -98,12 +98,13 @@ public static class AudioDiscovery
             }
         }
         row.Parent = ParentId(@"SWD\MMDEVAPI\" + item.Id);
+        item.ParentPresent = row.Parent != null;
         if (String.IsNullOrEmpty(row.Parent) && fallback != null && fallback.StartsWith("{1}.", StringComparison.Ordinal))
             row.Parent = fallback.Substring(4);
         if (String.IsNullOrEmpty(row.Parent)) return row;
         using (var controller = Registry.LocalMachine.OpenSubKey(EnumPath + row.Parent))
             row.Container = ValidContainer(Value(controller, "ContainerID"));
-        if (Bus(row).StartsWith("BTH", StringComparison.Ordinal) && row.Container == null)
+        if (Bus(row).StartsWith("BTH", StringComparison.Ordinal))
         {
             string current = row.Parent;
             for (int depth = 0; depth < 4 && current != null && current.StartsWith("BTH", StringComparison.OrdinalIgnoreCase); depth++)
@@ -113,7 +114,8 @@ public static class AudioDiscovery
                 current = ParentId(current);
             }
         }
-        if (Family(row) == "板载音频" && row.Form != 7 && row.Form != 8)
+        item.LinkConnected = BluetoothLink.Read(row.BluetoothAddress);
+        if ((Family(row) == "板载音频" || Family(row) == "USB") && row.Form != 7 && row.Form != 8)
             row.Sensed = JackSense.Read(item.Id);
         if (UsbModel.IsMatch(row.Parent))
         {
@@ -245,6 +247,7 @@ public static class AudioDiscovery
                 };
                 foreach (var row in device)
                 {
+                    row.Item.JackConnected = row.Sensed;
                     group.Forms[row.Item.Id] = row.Form;
                     row.Item.HandsFreeProfile = Bus(row).StartsWith("BTHHF",StringComparison.Ordinal);
                 }
