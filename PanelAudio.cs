@@ -26,10 +26,10 @@ internal class PanelAudio
         try { return SceneContext.Read(AudioCore.List(1),AudioCore.List(0),Outputs(),true).Guard(); }
         catch (Exception) { return "无法确认设备占用"; }
     }
-    public virtual string Guard(string[] roles)
+    public virtual SwitchGuard RouteGuard(string[] roles)
     {
-        try { return SceneContext.Read(AudioCore.List(1),AudioCore.List(0),roles).Guard(); }
-        catch (Exception) { return "无法确认设备占用"; }
+        try { return SwitchGuard.Evaluate(SceneContext.Read(AudioCore.List(1),AudioCore.List(0),roles)); }
+        catch (Exception) { return SwitchGuard.Evaluate(new SceneSignals { Unknown=true }); }
     }
 
     public void RoutePair(string[] outputs,string[] before,string[] inputs,string[] beforeInputs)

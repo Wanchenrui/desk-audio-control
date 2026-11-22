@@ -86,7 +86,7 @@ internal sealed partial class AudioPanel
                 else Activity("Windows",NameFor(defaultIn,1),"默认输入角色变化","input");
             }
             expectedOutputs = snap.Outputs; expectedInputs = snap.Inputs;
-            if (topology || sceneChanged || snap.Signals.Guard() != null || clock.ElapsedMilliseconds >= offerUntil)
+            if (topology || sceneChanged || SwitchGuard.Evaluate(snap.Signals).Blocked || clock.ElapsedMilliseconds >= offerUntil)
                 pendingRoute = null;
             hasSnapshot = true;
             if (cycleOnReady) { cycleOnReady = false; Act(Cycle); }

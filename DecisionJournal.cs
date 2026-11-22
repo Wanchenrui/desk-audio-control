@@ -21,6 +21,7 @@ internal sealed class SwitchEvidence
     public int Sensitivity { get; set; }
     public int Sessions { get; set; }
 
+    public string ConfirmationReason { get; set; }
     public string GuardCode { get; set; }
     public string SkipCode()
     {
@@ -48,7 +49,7 @@ internal sealed class SwitchEvidence
         if (Ranked == null) return SkipReason() ?? "唯一符合用途的新增输出";
         var best = Winner();
         var scores = String.Join("、",Ranked.Where(p => p != null).Select(p => p.Name + " " + p.Score(this)));
-        return Scene + " · " + (SkipReason() ?? ("选择 " + best.Name + " · L" + best.Level)) + "（" + scores + "）";
+        return Scene + " · " + (SkipReason() ?? ("选择 " + best.Name + " · L" + best.Level)) + (ConfirmationReason == null ? "" : " · " + ConfirmationReason) + "（" + scores + "）";
     }
 
     public string SkipReason()

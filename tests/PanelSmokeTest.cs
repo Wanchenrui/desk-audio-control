@@ -63,7 +63,7 @@ internal sealed partial class AudioPanel
             RouteTransaction.Apply(targets,i => MicRoles[i],(i,v) => MicRoles[i]=v,expected);
         }
         public override SceneSignals Context(List<SmartGroup> groups,string[] roles) { return new SceneSignals { Hour = 12, Communicating = ActiveCall, Foreground = Foreground }; }
-        public override string Guard(string[] roles) { return ActiveCall ? "会议保护" : null; }
+        public override SwitchGuard RouteGuard(string[] roles) { return SwitchGuard.Evaluate(new SceneSignals { Communicating=ActiveCall }); }
         public override void RouteOutputs(string[] targets,string[] expected)
         {
             if (RejectRoute) throw new InvalidOperationException("simulated route failure");

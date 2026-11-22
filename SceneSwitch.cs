@@ -20,12 +20,7 @@ internal sealed class SceneSignals
     }
     public string Guard()
     {
-        if (Unknown) return "无法确认录音或通信占用";
-        if (Camera) return "摄像头正在使用，启用会议保护";
-        if (Communicating || Foreground == "会议") return "会议或通信输出占用保护";
-        if (Capturing || Foreground == "录制") return "录制保护";
-        if (SharedBusy) return "通信与媒体共用端口，无法确认当前会话用途";
-        return Away ? "离开期间保留当前设备" : null;
+        return SwitchGuard.Evaluate(this).Reason;
     }
     public string ObservedScene(string previous)
     {

@@ -118,9 +118,12 @@ internal sealed partial class AudioPanel
     }
     DecisionRecord PlanRoute(Snapshot snap,string source,string[] added,long since)
     {
+        var guard = SwitchGuard.Evaluate(snap.Signals);
         var evidence = new SwitchEvidence { DefaultOutput = defaultOut, Scene = scenes.Current, Sessions = snap.Signals.Sessions,
-            Ranked = Candidates(journal.Records(),added), Sensitivity = sensitivity, Guard = tuningJob==null ? snap.Signals.Guard() : "正在进行声音调优",
+            Ranked = Candidates(journal.Records(),added), Sensitivity = sensitivity, Guard = tuningJob!=null ? "正在进行声音调优" : guard.Blocked ? guard.Reason : null,
+            GuardCode = tuningJob!=null ? "tuning" : guard.Code, ConfirmationReason = guard.MaxLevel==1 ? guard.Reason : null,
             Quiet = clock.ElapsedMilliseconds < quietUntil, CanRestore = snap.Outputs.All(v => !String.IsNullOrEmpty(v)) };
+        if (guard.MaxLevel==1) foreach (var candidate in evidence.Ranked) candidate.Level=Math.Min(1,candidate.Level);
         var best = evidence.Winner();
         string[] inputs = null;
         if (best != null && evidence.Guard == null)
@@ -133,7 +136,7 @@ internal sealed partial class AudioPanel
                     inputs = BluetoothPlan.InputTargets(g,snap.Inputs,IndependentMic(snap.Inputs));
                     evidence.PairCurrentInput = inputs != null;
                 }
-                catch (InvalidOperationException error) { evidence.Guard = error.Message; }
+                catch (InvalidOperationException error) { evidence.Guard = error.Message; evidence.GuardCode = "bluetooth_pair"; }
             }
         }
         string skip = evidence.SkipReason();
@@ -141,7 +144,7 @@ internal sealed partial class AudioPanel
         if (inputs != null) reason += " · 配对独立话筒 " + NameFor(inputs.Where((v,i) => !Same(snap.Inputs[i],v)).First(),1);
         string result = skip != null ? "skipped" : best.Level == 0 ? "hint" : best.Level == 1 ? "offer" : "prepared";
         var row = DecisionRecord.Create(source,String.Join("、",evidence.Ranked.Select(p => p.Name)),reason,result);
-        row.Scene = scenes.Current; row.Evidence = evidence; row.ReasonCode = evidence.SkipCode();
+        row.Scene = scenes.Current; row.Evidence = evidence; row.ReasonCode = evidence.SkipCode() ?? guard.Code;
         row.Timing = new RouteTiming { ScanStartMs = RouteTiming.Elapsed(since,snap.ScanStart),
             ScanEndMs = RouteTiming.Elapsed(since,snap.ScanEnd), DecisionMs = RouteTiming.Elapsed(since,Stopwatch.GetTimestamp()) };
         if (best != null) { row.Target = best.Id; row.DeviceKey = best.Key; }
@@ -222,17 +225,20 @@ internal sealed partial class AudioPanel
         try
         {
             var roles = audio.Outputs();
-            string guard = audio.Guard(roles);
+            var guard = audio.RouteGuard(roles);
+            bool confirmed = intent.Source == "执行建议";
+            bool blocked = guard.Blocked || (guard.MaxLevel==1 && !confirmed);
             bool stale = !SameRoles(intent.Before,roles) || !SameRoles(expectedInputs,audio.Inputs());
-            if (guard != null || stale || clock.ElapsedMilliseconds < quietUntil)
+            if (blocked || stale || clock.ElapsedMilliseconds < quietUntil)
             {
-                intent.Evidence.Guard = guard ?? "角色已改变或处于静默期";
+                intent.Evidence.Guard = blocked ? guard.Reason : "角色已改变或处于静默期";
+                intent.Evidence.GuardCode = blocked ? guard.Code : "route_changed";
                 var skipped = DecisionRecord.Create(intent.Source,intent.Candidates,intent.Evidence.Explain(),"skipped");
                 skipped.ReasonCode = intent.Evidence.GuardCode ?? "route_changed"; skipped.Timing = intent.Timing;
                 skipped.Related = intent.Id; skipped.Scene = intent.Scene; skipped.Evidence = intent.Evidence;
                 journal.Add(skipped); return;
             }
-            volumeChange=PrepareLanding(intent.Target,roles[1],intent.Id);
+            if (guard.MaxLevel>1) volumeChange=PrepareLanding(intent.Target,roles[1],intent.Id);
             if (volumeChange!=null) {
                 string protection=audio.TuningGuard();
                 if (protection!=null) throw new InvalidOperationException(protection);

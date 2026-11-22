@@ -54,6 +54,10 @@ internal static class SceneSwitchTest
         Check(signals.Classify()=="会议" && signals.Guard()!=null,"camera use protects meetings");
         signals = new SceneSignals { Hour=12, SharedBusy=true };
         Check(signals.Classify()=="日常" && signals.Guard()!=null,"unclassified shared stream stays protected");
+        var shared = SwitchGuard.Evaluate(signals);
+        Check(shared.MaxLevel == 1 && shared.Code == "shared_playback","unclassified playback permits confirmation");
+        signals.Capturing = true;
+        Check(SwitchGuard.Evaluate(signals).Blocked,"simultaneous capture still blocks a confirmed offer");
         signals = new SceneSignals { Hour=12, ControlForeground=true };
         Check(signals.ObservedScene("专注")=="专注","opening DeskAudio to accept an offer preserves foreground context");
         signals.Capturing=true;
