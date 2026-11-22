@@ -86,6 +86,7 @@ internal sealed partial class AudioPanel
             } catch (Exception e) { enableLanding.Set(tuneEnabled); TuneMessage(e.Message,true); }
         });
         comfortState=Cap(landing,"",10f,false,Tone.Ink); comfortState.Wrap=true;
+        comfortState.TextChanged+=delegate { LayoutTuning(page); };
         referenceButton=TuneButton(landing,"播放参考音",()=>StartTuningJob(false,false));
         learnButton=TuneButton(landing,"记住当前音量",delegate {
             var p=TuneOut;
@@ -166,18 +167,24 @@ internal sealed partial class AudioPanel
         foreach(var box in new[]{outputBox,inputBox}) box.SetBounds(x+P(88),y+P(120),w-P(88),P(32));
         portButton.SetBounds(x+P(88),y+P(120),w-P(88),P(32));
         int tableH=filterList.Wanted(10), eqH=P(130)+tableH+P(160);
-        for(int i=0;i<3;i++) tuneCards[i].SetBounds(x,y+P(166),w,i==2 ? eqH : P(274));
         int iw=w-2*m;
-        enableLanding.SetBounds(m,P(16),iw,P(36)); comfortState.SetBounds(m,P(64),iw,P(110));
+        int cardTop=y+P(166), rowGap=P(16);
+        enableLanding.SetBounds(m,P(16),iw,P(36));
+        int comfortHeight=Theme.MeasureWrapped(comfortState.Text,Theme.Face(comfortState.Pt),iw)+P(2);
+        comfortState.SetBounds(m,enableLanding.Bottom+rowGap,iw,comfortHeight);
+        capLabel.SetBounds(m,comfortState.Bottom+rowGap,P(120),P(32));
+        phoneCap.SetBounds(capLabel.Right+P(6),capLabel.Top,iw-capLabel.Width-P(6),capLabel.Height);
         var actions=new[]{referenceButton,learnButton,forgetButton,restoreOutput};
         int bw=Math.Min(P(140),(iw-3*P(8))/4);
-        for (int i=0;i<actions.Length;i++) actions[i].SetBounds(m+i*(bw+P(8)),P(207),bw,P(36));
+        for (int i=0;i<actions.Length;i++) actions[i].SetBounds(m+i*(bw+P(8)),phoneCap.Bottom+rowGap,bw,P(36));
+        tuneCards[0].SetBounds(x,cardTop,w,restoreOutput.Bottom+m);
+        tuneCards[1].SetBounds(x,cardTop,w,P(274));
+        tuneCards[2].SetBounds(x,cardTop,w,eqH);
         doctorText.SetBounds(m,P(24),iw,P(172));
         diagnoseButton.SetBounds(m,P(207),P(140),P(36)); repairButton.SetBounds(m+P(150),P(207),P(164),P(36));
         restoreInput.SetBounds(m+P(324),P(207),P(136),P(36));
         modelStatus.SetBounds(m,P(6),iw,P(40)); pickModel.SetBounds(m,P(48),iw,P(32));
         strengthLabel.SetBounds(m,P(84),P(104),P(34)); strength.SetBounds(m+P(110),P(84),iw-P(110),P(34));
-        capLabel.SetBounds(m,P(156),P(120),P(32)); phoneCap.SetBounds(m+P(126),P(156),iw-P(126),P(32));
         filterList.SetBounds(m,P(130),iw,tableH);
         int by=P(130)+tableH+P(8);
         apoStatus.SetBounds(m,by+P(40),iw,P(44));
@@ -185,7 +192,7 @@ internal sealed partial class AudioPanel
         measureEq.SetBounds(m+P(282),by+P(90),P(136),P(36));
         listenA.SetBounds(m,by,P(132),P(36)); listenB.SetBounds(m+P(142),by,P(132),P(36));
         exportEq.SetBounds(m+P(284),by,P(132),P(36));
-        int below=y+P(166)+(tuneTab==2 ? eqH : P(274))+P(7);
+        int below=tuneCards[tuneTab].Bottom+P(7);
         tuneFeedback.SetBounds(x,below,w-P(100),tuneTab==2 ? P(40) : P(56));
         stopAudio.SetBounds(x+w-P(86),below+P(9),P(86),P(34));
     }

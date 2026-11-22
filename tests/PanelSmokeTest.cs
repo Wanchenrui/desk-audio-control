@@ -243,6 +243,9 @@ internal sealed partial class AudioPanel
         rail.Index=TunePageIndex;
         for (int i=0;i<3;i++) {
             SelectTuneTab(i);
+            if (i==0 && (comfortState.Bottom>Math.Min(capLabel.Top,phoneCap.Top) ||
+                Math.Max(capLabel.Bottom,phoneCap.Bottom)>referenceButton.Top || restoreOutput.Bottom>tuneCards[0].Height))
+                throw new Exception("Comfort instructions, headphone ceiling and buttons need separate rows.");
             if (i==2) modelBox.SelectedItem=presets.First(p=>p.Model=="Sennheiser HD 600");
             Update();
             using (var bmp=new Bitmap(Width,Height)) { DrawToBitmap(bmp,new Rectangle(0,0,Width,Height)); bmp.Save(Path.Combine(folder,"tuning-"+i+".png")); }
