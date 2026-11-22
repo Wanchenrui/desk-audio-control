@@ -25,6 +25,9 @@ internal static class TuningTest
         Check(Landing.FromDb(-24,anchors)==30,"interpolate native gain between measured endpoint levels");
         Check(Landing.FromDb(-60,anchors)==20 && Landing.FromDb(8,anchors)==100,"clamp gain outside known range");
         Check(LevelPlanner.Curve(new[]{new GainPoint(0,-60),new GainPoint(40,0),new GainPoint(100,-5)})==null,"reversed driver curve");
+        var points=new[]{new GainPoint(0,-80),new GainPoint(20,-36),new GainPoint(50,-18),new GainPoint(85,-5),new GainPoint(100,0)};
+        Check(LevelPlanner.MeasuredDb(points,85)==-5 && Double.IsNaN(LevelPlanner.MeasuredDb(points,86)),"retain only the observed calibration level");
+        Check(Double.IsNaN(LevelPlanner.MeasuredDb(points.Concat(new[]{new GainPoint(85,-9)}).ToArray(),85)),"conflicting readings cannot become anchors");
         var noon=new DateTime(2026,1,5,12,0,0,DateTimeKind.Utc);
         var day=new[]{30,30,32,97}.Select(v=>new ComfortSample { Level=v,Db=v-100,Night=false,Utc=noon }).ToArray();
         var night=Enumerable.Repeat(new ComfortSample { Level=8,Db=-92,Night=true,Utc=noon },5);
@@ -98,6 +101,13 @@ internal static class TuningTest
         Check(EqPlanner.Supported(hd,48000) && !EqPlanner.Supported(hd,8000),"endpoint Nyquist limit");
         var flat=EqPlanner.Plan(hd,0,48000);
         Check(flat.Filter.Preamp==0 && flat.Filter.Rows.All(r=>r.Gain==0),"zero strength is flat");
+        var positive=hd.WithParameters(flat.Filter.Rows,4);
+        Check(EqPlanner.Plan(positive,100,48000).Filter.Preamp==0,"positive source preamp cannot boost a flat response");
+        var silentBands=new TuningStream.BandReading { Hz=Enumerable.Repeat(500.0,24).ToArray(),Power=new double[24] };
+        Check(silentBands.Compare(silentBands,flat).Contains("有效频带不足"),"zero baseline cannot produce a dB reading");
+        var measured=new TuningStream.BandReading { Hz=silentBands.Hz,Power=Enumerable.Repeat(1.0,24).ToArray() };
+        measured.Power[0]=Double.PositiveInfinity; measured.Power[1]=0; measured.Power[2]=Double.NaN;
+        Check(measured.Compare(measured,flat).StartsWith("21 个频带"),"discard invalid or silent bins without losing valid bands");
         var half=EqPlanner.Plan(hd,50,48000);
         Check(half.HeadroomDb>=0 && Math.Abs(half.Filter.Rows[0].Gain-hd.Rows[0].Gain/2)<.001,"scaled filters retain headroom");
         string apoDir=Path.Combine(Path.GetTempPath(),"DeskAudio.Apo."+Guid.NewGuid().ToString("N"));

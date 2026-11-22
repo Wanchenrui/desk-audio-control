@@ -15,6 +15,7 @@ internal sealed class LevelPlan
     public int Start,Target,Ceiling;
     public double? StartDb, TargetDb, CeilingDb;
     public int[] Steps;
+    public int MonitorTicks;
     public string Reason;
 }
 
@@ -22,6 +23,15 @@ internal static class LevelPlanner
 {
     const int MinimumSamples=3;
     public static bool Night(int hour) { return hour>=22 || hour<6; }
+
+    // Only an observed point at this exact scalar is eligible for learning. In
+    // particular, a rounded 100% reading can coexist with the driver's range endpoint.
+    internal static double MeasuredDb(GainPoint[] points,int level)
+    {
+        var matches=points.Where(p=>p.Level==level && p.Db>=-200 && p.Db<=50).ToArray();
+        if (matches.Length==0 || matches.Max(p=>p.Db)-matches.Min(p=>p.Db)>1) return Double.NaN;
+        return matches.Average(p=>p.Db);
+    }
 
     // Never sweep device volume to measure its curve. Combine read-only range/current
     // readings with earlier observed gain points; reject ambiguous or reversed curves.
@@ -90,6 +100,8 @@ internal static class LevelPlanner
         target=source==0 || current==0 ? 0 : Math.Max(0,Math.Min(cap,target));
         int start=phones ? Math.Min(current,Math.Min(12,target/3)) : Math.Min(current,target);
         var plan=new LevelPlan { Start=start,Target=target,Ceiling=cap,Reason=reason,Steps=new int[6] };
+        // After the six-step fade, headphones keep checking peaks for twelve more ticks.
+        plan.MonitorTicks=plan.Steps.Length+(phones ? 12 : 0);
         if (b!=null) { plan.StartDb=DbAt(b,start); plan.TargetDb=DbAt(b,target); plan.CeilingDb=DbAt(b,cap); }
         for (int i=0;i<plan.Steps.Length;i++) {
             double t=(i+1.0)/plan.Steps.Length;

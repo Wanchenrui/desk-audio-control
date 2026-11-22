@@ -56,7 +56,7 @@ internal sealed partial class AudioPanel
     void RememberLevel(string key,string id,int level)
     {
         var curve=DeviceGain(id);
-        levels.Learn(key,level,curve.Length==3 && curve[1].Level==level ? curve[1].Db : Double.NaN);
+        levels.Learn(key,level,LevelPlanner.MeasuredDb(curve,level));
     }
     // Return the durable volume intent to the caller before changing the default roles.
     VolumeChange PrepareLanding(string target,string source,string owner,bool confirmed=false)
@@ -115,7 +115,7 @@ internal sealed partial class AudioPanel
                 Activity("柔着陆",NameFor(tx.Endpoint,0),"切换后检测到高峰值，已降低音量","tuned"); return;
             }
             if (rampTick<=rampPlan.Steps.Length) levels.Step(tx,rampPlan.Steps[rampTick-1]);
-            if (rampTick>=(rampHeadphones ? 18 : 6)) StopLanding();
+            if (rampTick>=rampPlan.MonitorTicks) StopLanding();
         } catch (Exception e) { StopLanding(); Fail("淡入已停止 · "+e.Message); }
     }
     void AbortLanding(VolumeChange tx,string[] before)

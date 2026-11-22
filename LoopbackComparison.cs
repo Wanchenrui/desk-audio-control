@@ -12,11 +12,12 @@ internal sealed partial class TuningStream
         public double[] Power,Hz;
         internal string Compare(BandReading after,EqPlan plan)
         {
-            double peak=Power.Max();
             var bands=Enumerable.Range(0,Power.Length).Where(i=>Hz[i]>=30 && Hz[i]<=20000 &&
-                Power[i]>peak*.00001 && after.Power[i]>0).ToArray();
+                Power[i]>0 && after.Power[i]>0 && !Double.IsInfinity(Power[i]) && !Double.IsInfinity(after.Power[i])).ToArray();
+            double peak=bands.Select(i=>Power[i]).DefaultIfEmpty(0).Max();
+            bands=bands.Where(i=>Power[i]>peak*.00001).ToArray();
             if (bands.Length<12) return "有效频带不足，请在空闲端口重新测量";
-            var observed=bands.Select(i=>10*Math.Log10(after.Power[i]/Power[i])).ToArray();
+            var observed=bands.Select(i=>10*(Math.Log10(after.Power[i])-Math.Log10(Power[i]))).ToArray();
             double rms=Math.Sqrt(observed.Select((v,k)=>Math.Pow(v-plan.Expected(Hz[bands[k]]),2)).Average());
             double change=Math.Sqrt(observed.Average(v=>v*v));
             return String.Format("{0} 个频带 · 环回前后变化 RMS {1:F1} dB · 相对规划频响偏差 RMS {2:F1} dB。{3}",
