@@ -64,6 +64,13 @@ internal static class FoundationTest
         {
             var cfg = new SettingsFile(folder, () => new Dictionary<string,string> { { "PreferNewOutput","1" } });
             Check(cfg.Get("PreferNewOutput") == "1", "first-run migration");
+            string freshFolder = Path.Combine(folder, "fresh");
+            var freshCfg = new SettingsFile(freshFolder, SettingsFile.FreshDefaults);
+            Check(freshCfg.Get("PreferNewOutput") == "1" && freshCfg.Get("EnableTuning") == "1", "fresh install turns smart switching and tuning on");
+            freshCfg.Put("PreferNewOutput","0");
+            var freshAgain = new SettingsFile(freshFolder, SettingsFile.FreshDefaults);
+            Check(freshAgain.Get("PreferNewOutput") == "0" && freshAgain.Get("EnableTuning") == "1", "restart keeps the user's own choice");
+            Check(new SettingsFile(Path.Combine(folder, "legacy"), () => new Dictionary<string,string>()).Get("EnableTuning") == null, "an upgrade without those keys stays off");
             cfg.Put("PreferNewOutput","0");
             cfg.Put("example", "persist");
             var reopened = new SettingsFile(folder, () => { throw new Exception("unexpected second migration"); });

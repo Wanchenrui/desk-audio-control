@@ -67,6 +67,12 @@ internal sealed class SettingsFile
     Dictionary<string,string> values;
     public string Warning { get; private set; }
 
+    // A machine that has never run DeskAudio starts with the automatic features on. Upgrades keep their own switches.
+    public static Dictionary<string,string> FreshDefaults()
+    {
+        return new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase) { { "PreferNewOutput","1" }, { "EnableTuning","1" } };
+    }
+
     public SettingsFile(string folder, Func<Dictionary<string,string>> legacy)
     {
         path = Path.Combine(folder, "settings.json");
@@ -144,7 +150,7 @@ internal static class AppConfig
         var values = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
         using (var root = Registry.CurrentUser.OpenSubKey(@"Software\DeskAudioControl"))
         {
-            if (root == null) return values;
+            if (root == null) return SettingsFile.FreshDefaults();
             foreach (string name in new[] { "PreferNewOutput", "BeforeInput", "AutomaticUpdates", "UpdateStatusVersion",
                 "UpdateStatus", "UpdateAttemptUtc", "LastNotifiedUpdate", "UseSignedInGitHub" })
             {
