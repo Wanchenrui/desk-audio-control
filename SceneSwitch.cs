@@ -58,6 +58,9 @@ internal sealed class RouteCandidate
     public bool Speaker { get; set; }
     public bool Stereo { get; set; }
     public bool RestoreStereo { get; set; }
+    public int FeedbackOffset { get; set; }
+    public int Kept { get; set; }
+    public int Corrected { get; set; }
     public string Presence { get; set; }
     public int Preference { get; set; }
     public int Level { get; set; }
@@ -71,7 +74,7 @@ internal sealed class RouteCandidate
     public int Score(SwitchEvidence e)
     {
         int cost = RouteTransaction.Equal(Id,e.DefaultOutput) ? 0 : 2 * Math.Min(10,e.Sessions);
-        return Preference + (Recent ? 36 : 0) + (Stereo ? 5 : 0) + (RestoreStereo ? 30 : 0) + SceneFit(e.Scene) - cost;
+        return Preference + FeedbackOffset + (Recent ? 36 : 0) + (Stereo ? 5 : 0) + (RestoreStereo ? 30 : 0) + SceneFit(e.Scene) - cost;
     }
 }
 

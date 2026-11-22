@@ -22,6 +22,8 @@ internal sealed class SwitchEvidence
     public int Sessions { get; set; }
 
     public string ConfirmationReason { get; set; }
+    public int ModelVersion { get; set; }
+    public string[] PresenceEvidence { get; set; }
     public string GuardCode { get; set; }
     public string SkipCode()
     {
@@ -35,7 +37,9 @@ internal sealed class SwitchEvidence
         if (Ranked.Count(p => p != null && p.Score(this) == best.Score(this)) > 1) return "tie";
         var current = Ranked.FirstOrDefault(p => p != null && RouteTransaction.Equal(p.Id,DefaultOutput));
         int lead = best.Score(this) - (current == null ? 0 : current.Score(this));
-        return lead < 4 + (100-Sensitivity)/4 ? "margin" : null;
+        int threshold=4+(100-Sensitivity)/4;
+        if (ModelVersion==0) return lead<threshold ? "margin" : null;
+        return RouteFeedback.Probability(lead)<RouteFeedback.Probability(threshold) ? "margin" : null;
     }
 
     public RouteCandidate Winner()

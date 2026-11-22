@@ -93,10 +93,12 @@ internal sealed partial class AudioPanel
             if (!g.Forms.TryGetValue(pick.Id,out form)) form = -1;
             bool infer = mode == "auto" || mode == "show";
             var trust = RouteTrust.From(history,g.Key,scenes.Current,now);
+            var feedback=RouteFeedback.From(history,g.Key,scenes.Current,now);
             candidates.Add(new RouteCandidate { Id = pick.Id, Key = g.Key, Name = g.Name,
                 Headphones = mode == "headphones" || mode == "duplex" || (infer && (form == 3 || form == 5)),
                 Speaker = mode == "speaker" || (infer && form == 1), Stereo = pick.Channels >= 2,
                 RestoreStereo = bt && g.Outputs.Any(p => Same(p.Id,defaultOut) && (SmartPolicy.HandsFree(p) || p.Channels == 1)),
+                Kept=feedback.Kept,Corrected=feedback.Corrected,FeedbackOffset=feedback.Offset,
                 Preference = trust.Preference, Recent = added.Contains(g.Key,StringComparer.OrdinalIgnoreCase),
                 Presence = pick.Presence==null ? null : pick.Presence.State+" · "+pick.Presence.Reason,
                 Level = Math.Min(pick.Presence==null ? 1 : pick.Presence.MaxLevel,autonomy < 0 ? trust.Level : autonomy) });
@@ -121,7 +123,9 @@ internal sealed partial class AudioPanel
     DecisionRecord PlanRoute(Snapshot snap,string source,string[] added,long since)
     {
         var guard = SwitchGuard.Evaluate(snap.Signals);
-        var evidence = new SwitchEvidence { DefaultOutput = defaultOut, Scene = scenes.Current, Sessions = snap.Signals.Sessions,
+        var evidence = new SwitchEvidence { ModelVersion=1,
+            PresenceEvidence=snap.Groups.Where(g=>!g.Virtual).SelectMany(g=>g.Outputs.Where(p=>p.Presence!=null)
+                .Select(p=>p.Name+" · "+p.Presence.State+" · "+p.Presence.Reason)).ToArray(), DefaultOutput = defaultOut, Scene = scenes.Current, Sessions = snap.Signals.Sessions,
             Ranked = Candidates(journal.Records(),added), Sensitivity = sensitivity, Guard = tuningJob!=null ? "正在进行声音调优" : guard.Blocked ? guard.Reason : null,
             GuardCode = tuningJob!=null ? "tuning" : guard.Code, ConfirmationReason = guard.MaxLevel==1 ? guard.Reason : null,
             Quiet = clock.ElapsedMilliseconds < quietUntil, CanRestore = snap.Outputs.All(v => !String.IsNullOrEmpty(v)) };

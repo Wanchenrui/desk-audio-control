@@ -154,6 +154,16 @@ internal sealed partial class AudioPanel
                     foreach (var p in e.Ranked.Where(p => p != null))
                         replay += "\n" + p.Name + " · L" + p.Level + " · 偏好 " + p.Preference + " · 场景适配 " + p.SceneFit(e.Scene) +
                             (p.Recent ? " · 新接入" : "") + (p.Stereo ? " · 多声道" : "") + (p.RestoreStereo ? " · 避免蓝牙免提" : "") + " · 总分 " + p.Score(e) + (p.Presence==null ? "" : " · "+p.Presence);
+                    if (e.ModelVersion>0) {
+                        var best=e.Winner();
+                        var incumbent=e.Ranked.FirstOrDefault(p=>p!=null && Same(p.Id,e.DefaultOutput));
+                        if (best!=null && !Same(best.Id,e.DefaultOutput)) {
+                            int lead=best.Score(e)-(incumbent==null ? 0 : incumbent.Score(e));
+                            replay+="\n相对当前输出的模型概率 "+RouteFeedback.Probability(lead).ToString("P0")+
+                                " · 胜出设备保留 "+best.Kept+" 次，纠正 "+best.Corrected+" 次，反馈修正 "+best.FeedbackOffset+" 分";
+                        }
+                        if (e.PresenceEvidence!=null) replay+="\n"+String.Join("\n",e.PresenceEvidence);
+                    }
                     if (record.InputAfter != null) replay += "\n" + record.Reason;
                 }
                 if (record.ReasonCode != null) replay += "\n原因码 " + record.ReasonCode;

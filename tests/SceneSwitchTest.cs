@@ -89,6 +89,10 @@ internal static class SceneSwitchTest
         input.Quiet=false; input.CanRestore=false;
         Check(input.SkipReason()!=null,"missing previous role");
         var now = DateTime.UtcNow;
+        var observations=Enumerable.Range(0,8).Select(i=>Action("applied","usb","音乐",now.AddMinutes(-i-1))).ToList();
+        Check(RouteFeedback.From(observations,"usb","音乐",now).Offset>0,"settled actions update posterior");
+        observations[0].Imported=true;
+        Check(RouteFeedback.From(observations,"usb","音乐",now).Offset==0,"insufficient local outcomes retain prior");
         var records = Enumerable.Range(1,3).Select(i => Action("applied","a","音乐",now.AddMinutes(-5+i))).ToList();
         Check(RouteTrust.From(records,"a","音乐",now).Level==3,"three settled actions earn silent level");
         Check(RouteTrust.From(records,"b","音乐",now).Level==2 && RouteTrust.From(records,"a","游戏",now).Level==2,"trust isolation");
