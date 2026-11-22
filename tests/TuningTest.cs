@@ -70,7 +70,11 @@ internal static class TuningTest
         var a=hd.Preview(false); var b=hd.Preview(true);
         Check(a.Length==b.Length && !a.SequenceEqual(b),"A/B uses actual filter");
         Check(a.SequenceEqual(EqPreset.Reference()),"comfort reference is the flat A sample");
-        Check(catalog.Length==16 && catalog.All(p=>p.Export().Contains("Filter 10:") && p.Export().Contains("oratory1990")),"complete measured catalog with attribution");
+        Check(catalog.Length==734 && catalog.Count(p=>p.Category=="in-ear")==212 && catalog.All(p=>p.Export().Contains("Filter 10:") && p.Export().Contains("oratory1990") && !p.Parameters.Contains("Category")),"complete measured catalog with attribution");
+        Check(hd.Category=="over-ear" && hd.Source.EndsWith("/over-ear/Sennheiser%20HD%20600"),"over-ear source link");
+        var inEar=catalog.First(p=>p.Category=="in-ear");
+        Check(inEar.Source.Contains("/in-ear/") && inEar.Export().Contains("/in-ear/"),"in-ear source link follows its category");
+        Check(catalog.Select(p=>p.Model).Distinct(StringComparer.OrdinalIgnoreCase).Count()==catalog.Length,"model names are unique");
         Check(a.Max(v=>Math.Abs((int)v))<4000 && b.Max(v=>Math.Abs((int)v))<4000,"bounded audition");
         Console.WriteLine(count+" P3 tuning checks passed.");
     }

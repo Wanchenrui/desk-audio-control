@@ -10,8 +10,10 @@ internal sealed class EqPreset
 {
     public const int Rate=48000;
     public string Model { get; private set; }
+    // "over-ear" or "in-ear", the oratory1990 folder the measurement comes from.
+    public string Category { get; private set; }
     public override string ToString() { return Model; }
-    public string Source { get { return "https://github.com/jaakkopasanen/AutoEq/tree/7ae0f56d53074872b028649617a22bbb4232feb7/results/oratory1990/over-ear/"+Uri.EscapeDataString(Model); } }
+    public string Source { get { return "https://github.com/jaakkopasanen/AutoEq/tree/7ae0f56d53074872b028649617a22bbb4232feb7/results/oratory1990/"+Category+"/"+Uri.EscapeDataString(Model); } }
     string parameters;
     double preamp;
     readonly List<Band> bands=new List<Band>();
@@ -25,9 +27,11 @@ internal sealed class EqPreset
         var list=new List<EqPreset>();
         foreach (var section in Resource("DeskAudio.EQ.txt").Trim().Split(new[]{"\n\n"},StringSplitOptions.RemoveEmptyEntries)) {
             var lines=section.Split('\n');
-            var item=new EqPreset { Model=lines[0].Trim('[',']'),parameters=String.Join("\n",lines.Skip(1)) };
-            item.preamp=Number(lines[1].Split(' ')[1]);
-            foreach (var row in lines.Skip(2)) {
+            bool tagged=lines[1].StartsWith("Category: ",StringComparison.Ordinal);
+            var body=lines.Skip(tagged ? 2 : 1).ToArray();
+            var item=new EqPreset { Model=lines[0].Trim('[',']'),Category=tagged ? lines[1].Substring(10).Trim() : "over-ear",parameters=String.Join("\n",body) };
+            item.preamp=Number(body[0].Split(' ')[1]);
+            foreach (var row in body.Skip(1)) {
                 var parts=row.Split(' ');
                 item.bands.Add(new Band(parts[3],Number(parts[5]),Number(parts[8]),Number(parts[11])));
             }
