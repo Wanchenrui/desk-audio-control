@@ -63,6 +63,17 @@ internal static class SceneSwitchTest
         signals.Capturing=true;
         Check(signals.ObservedScene("专注")=="录制" && signals.Guard()!=null,"recording takes precedence over panel interaction");
 
+        int attempts=0;
+        var recovered=SceneContext.ReadWithRetry(delegate {
+            if (attempts++==0) throw new System.Runtime.InteropServices.COMException("busy",unchecked((int)0x80010001));
+            return new SceneSignals { Capturing=true };
+        });
+        Check(attempts==2 && SwitchGuard.Evaluate(recovered).Code=="capture","retry obtains fresh capture evidence");
+        attempts=0;
+        var missing=SceneContext.ReadWithRetry(delegate {
+            attempts++; throw new System.Runtime.InteropServices.COMException("missing",unchecked((int)0x80040154));
+        });
+        Check(attempts==1 && SwitchGuard.Evaluate(missing).Blocked && missing.ReadError.Contains("80040154"),"permanent failure records cause and blocks");
         var scenes = new SceneTracker();
         Check(!scenes.Observe("日常",0),"first snapshot only");
         Check(!scenes.Observe("音乐",1000) && !scenes.Observe("日常",9000),"transient scene discarded");

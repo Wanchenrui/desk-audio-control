@@ -7,7 +7,7 @@ internal sealed class SwitchGuard
     SwitchGuard(int level,string code,string reason) { MaxLevel=level; Code=code; Reason=reason; }
     public static SwitchGuard Evaluate(SceneSignals s)
     {
-        if (s.Unknown) return new SwitchGuard(-1,"usage_unknown","无法确认录音或通信占用");
+        if (s.Unknown) return new SwitchGuard(-1,"usage_unknown","无法确认录音或通信占用"+(s.ReadError==null ? "" : " · "+s.ReadError));
         if (s.Camera) return new SwitchGuard(-1,"camera","摄像头正在使用");
         if (s.Communicating || s.Foreground=="会议") return new SwitchGuard(-1,"call","会议或通信输出正在使用");
         if (s.Capturing || s.Foreground=="录制") return new SwitchGuard(-1,"capture","录音正在进行");

@@ -79,14 +79,15 @@ internal sealed partial class AudioPanel
         row.DeviceKey = g == null ? null : g.Key; row.Scene = scenes.Current;
         journal.Add(row);
     }
-    RouteCandidate[] Candidates(List<DecisionRecord> history,string[] added)
+    RouteCandidate[] Candidates(Snapshot snap,List<DecisionRecord> history,string[] added)
     {
         var candidates = new List<RouteCandidate>();
         var now = DateTime.UtcNow;
-        foreach (var g in groups.Where(g => !g.Virtual && Eligible(g,0)))
+        string current=snap.Outputs[1];
+        foreach (var g in snap.Groups.Where(g => !g.Virtual && SmartPolicy.PrimaryForFlow(g,snap.Groups,0,current)))
         {
             var bt = g.Kind == "Bluetooth";
-            var pick = bt ? SmartPolicy.StereoOutput(g,defaultOut) : SmartPolicy.Pick(g,0,defaultOut);
+            var pick = bt ? SmartPolicy.StereoOutput(g,current) : SmartPolicy.Pick(g,0,current);
             if (pick == null) continue;
             string mode = SmartPolicy.Mode(g);
             int form;
@@ -97,7 +98,7 @@ internal sealed partial class AudioPanel
             candidates.Add(new RouteCandidate { Id = pick.Id, Key = g.Key, Name = g.Name,
                 Headphones = mode == "headphones" || mode == "duplex" || (infer && (form == 3 || form == 5)),
                 Speaker = mode == "speaker" || (infer && form == 1), Stereo = pick.Channels >= 2,
-                RestoreStereo = bt && g.Outputs.Any(p => Same(p.Id,defaultOut) && (SmartPolicy.HandsFree(p) || p.Channels == 1)),
+                RestoreStereo = bt && g.Outputs.Any(p => Same(p.Id,current) && (SmartPolicy.HandsFree(p) || p.Channels == 1)),
                 Kept=feedback.Kept,Corrected=feedback.Corrected,FeedbackOffset=feedback.Offset,
                 Preference = trust.Preference, Recent = added.Contains(g.Key,StringComparer.OrdinalIgnoreCase),
                 Presence = pick.Presence==null ? null : pick.Presence.State+" · "+pick.Presence.Reason,
@@ -106,18 +107,18 @@ internal sealed partial class AudioPanel
         return candidates.ToArray();
     }
 
-    string IndependentMic(string[] roles)
+    string IndependentMic(Snapshot snap)
     {
         var suitable = new List<AudioItem>();
-        foreach (var g in groups.Where(g => !g.Virtual && g.Kind != "Bluetooth" && Eligible(g,1)))
+        foreach (var g in snap.Groups.Where(g => !g.Virtual && g.Kind != "Bluetooth" && SmartPolicy.PrimaryForFlow(g,snap.Groups,1,snap.Inputs[1])))
         {
-            var p = SmartPolicy.Pick(g,1,defaultIn);
+            var p = SmartPolicy.Pick(g,1,snap.Inputs[1]);
             if (p == null) continue;
             int form;
             if (SmartPolicy.Mode(g) == "microphone" || (g.Forms.TryGetValue(p.Id,out form) && form == 4))
                 suitable.Add(p);
         }
-        var existing = suitable.FirstOrDefault(p => roles.Contains(p.Id,StringComparer.OrdinalIgnoreCase));
+        var existing = suitable.FirstOrDefault(p => snap.Inputs.Contains(p.Id,StringComparer.OrdinalIgnoreCase));
         return existing != null ? existing.Id : suitable.Count == 1 ? suitable[0].Id : null;
     }
     DecisionRecord PlanRoute(Snapshot snap,string source,string[] added,long since)
@@ -125,8 +126,8 @@ internal sealed partial class AudioPanel
         var guard = SwitchGuard.Evaluate(snap.Signals);
         var evidence = new SwitchEvidence { ModelVersion=1,
             PresenceEvidence=snap.Groups.Where(g=>!g.Virtual).SelectMany(g=>g.Outputs.Where(p=>p.Presence!=null)
-                .Select(p=>p.Name+" · "+p.Presence.State+" · "+p.Presence.Reason)).ToArray(), DefaultOutput = defaultOut, Scene = scenes.Current, Sessions = snap.Signals.Sessions,
-            Ranked = Candidates(journal.Records(),added), Sensitivity = sensitivity, Guard = tuningJob!=null ? "正在进行声音调优" : guard.Blocked ? guard.Reason : null,
+                .Select(p=>p.Name+" · "+p.Presence.State+" · "+p.Presence.Reason)).ToArray(), DefaultOutput = snap.Outputs[1], Scene = scenes.Current, Sessions = snap.Signals.Sessions,
+            Ranked = Candidates(snap,journal.Records(),added), Sensitivity = sensitivity, Guard = tuningJob!=null ? "正在进行声音调优" : guard.Blocked ? guard.Reason : null,
             GuardCode = tuningJob!=null ? "tuning" : guard.Code, ConfirmationReason = guard.MaxLevel==1 ? guard.Reason : null,
             Quiet = clock.ElapsedMilliseconds < quietUntil, CanRestore = snap.Outputs.All(v => !String.IsNullOrEmpty(v)) };
         if (guard.MaxLevel==1) foreach (var candidate in evidence.Ranked) candidate.Level=Math.Min(1,candidate.Level);
@@ -134,12 +135,12 @@ internal sealed partial class AudioPanel
         string[] inputs = null;
         if (best != null && evidence.Guard == null)
         {
-            var g = groups.First(x => Same(x.Key,best.Key));
+            var g = snap.Groups.First(x => Same(x.Key,best.Key));
             if (g.Kind == "Bluetooth" && snap.Inputs.Any(id => ContainsId(g.Inputs,id)))
             {
                 try
                 {
-                    inputs = BluetoothPlan.InputTargets(g,snap.Inputs,IndependentMic(snap.Inputs));
+                    inputs = BluetoothPlan.InputTargets(g,snap.Inputs,IndependentMic(snap));
                     evidence.PairCurrentInput = inputs != null;
                     if (inputs!=null) {
                         var mic=snap.Groups.SelectMany(x=>x.Inputs).FirstOrDefault(p=>inputs.Where((v,i)=>!Same(v,snap.Inputs[i])).Any(v=>Same(v,p.Id)));
@@ -154,7 +155,7 @@ internal sealed partial class AudioPanel
         }
         string skip = evidence.SkipReason();
         string reason = evidence.Explain();
-        if (inputs != null) reason += " · 配对独立话筒 " + NameFor(inputs.Where((v,i) => !Same(snap.Inputs[i],v)).First(),1);
+        if (inputs != null) reason += " · 配对独立话筒 " + NameFor(snap.Groups,inputs.Where((v,i) => !Same(snap.Inputs[i],v)).First(),1);
         string result = skip != null ? "skipped" : best.Level == 0 ? "hint" : best.Level == 1 ? "offer" : "prepared";
         var row = DecisionRecord.Create(source,String.Join("、",evidence.Ranked.Select(p => p.Name)),reason,result);
         row.Scene = scenes.Current; row.Evidence = evidence; row.ReasonCode = evidence.SkipCode() ?? guard.Code;
@@ -217,11 +218,7 @@ internal sealed partial class AudioPanel
             !SameRoles(expectedInputs,snap.Inputs) || snap.Signals.ObservedScene(scenes.Current) != offer.Scene)
             mismatch = "设备或场景已经变化";
         var recent = offer.Evidence.Ranked.Where(p => p.Recent).Select(p => p.Key).ToArray();
-        var previous=groups;
-        DecisionRecord row;
-        groups=snap.Groups;
-        try { row=PlanRoute(snap,"执行建议",recent,since); }
-        finally { groups=previous; }
+        var row=PlanRoute(snap,"执行建议",recent,since);
         if (mismatch == null && (row.Result != "offer" || !Same(row.Target,offer.Target) ||
             !(row.InputAfter == null && offer.InputAfter == null || SameRoles(row.InputAfter,offer.InputAfter))))
             mismatch = row.Evidence.SkipReason() ?? "当前建议已变化";
@@ -234,6 +231,23 @@ internal sealed partial class AudioPanel
         row.Result = "prepared";
         ExecuteRoute(row,since);
     }
+    bool CheckIntent(DecisionRecord intent,bool confirmed,VolumeChange landing)
+    {
+        var roles=audio.Outputs();
+        var guard=audio.RouteGuard(roles);
+        string code=null,reason=null;
+        if (guard.Blocked || (guard.MaxLevel==1 && !confirmed)) { code=guard.Code; reason=guard.Reason; }
+        else if (!SameRoles(intent.Before,roles) || !SameRoles(expectedInputs,audio.Inputs())) {
+            code="route_changed"; reason="默认角色已经改变";
+        } else if (clock.ElapsedMilliseconds<quietUntil) { code="quiet_period"; reason="处于静默期"; }
+        if (reason==null) return true;
+        AbortLanding(landing,intent.Before);
+        intent.Evidence.Guard=reason; intent.Evidence.GuardCode=code;
+        var skipped=DecisionRecord.Create(intent.Source,intent.Candidates,intent.Evidence.Explain(),"skipped");
+        skipped.ReasonCode=code; skipped.Scene=intent.Scene; skipped.Related=intent.Id;
+        skipped.Evidence=intent.Evidence; skipped.Timing=intent.Timing; journal.Add(skipped);
+        return false;
+    }
     void ExecuteRoute(DecisionRecord intent,long since)
     {
         journal.Add(intent);
@@ -242,29 +256,10 @@ internal sealed partial class AudioPanel
         VolumeChange volumeChange=null;
         try
         {
-            var roles = audio.Outputs();
-            var guard = audio.RouteGuard(roles);
             bool confirmed = intent.Source == "执行建议";
-            bool blocked = guard.Blocked || (guard.MaxLevel==1 && !confirmed);
-            bool stale = !SameRoles(intent.Before,roles) || !SameRoles(expectedInputs,audio.Inputs());
-            if (blocked || stale || clock.ElapsedMilliseconds < quietUntil)
-            {
-                intent.Evidence.Guard = blocked ? guard.Reason : "角色已改变或处于静默期";
-                intent.Evidence.GuardCode = blocked ? guard.Code : "route_changed";
-                var skipped = DecisionRecord.Create(intent.Source,intent.Candidates,intent.Evidence.Explain(),"skipped");
-                skipped.ReasonCode = intent.Evidence.GuardCode ?? "route_changed"; skipped.Timing = intent.Timing;
-                skipped.Related = intent.Id; skipped.Scene = intent.Scene; skipped.Evidence = intent.Evidence;
-                journal.Add(skipped); return;
-            }
-            volumeChange=PrepareLanding(intent.Target,roles[1],intent.Id,confirmed);
-            var finalGuard=audio.RouteGuard(roles);
-            if (finalGuard.Blocked || (finalGuard.MaxLevel==1 && !confirmed)) {
-                AbortLanding(volumeChange,intent.Before);
-                intent.Evidence.Guard=finalGuard.Reason; intent.Evidence.GuardCode=finalGuard.Code;
-                var skipped=DecisionRecord.Create(intent.Source,intent.Candidates,intent.Evidence.Explain(),"skipped");
-                skipped.ReasonCode=finalGuard.Code; skipped.Scene=intent.Scene; skipped.Related=intent.Id;
-                skipped.Evidence=intent.Evidence; skipped.Timing=intent.Timing; journal.Add(skipped); return;
-            }
+            if (!CheckIntent(intent,confirmed,null)) return;
+            volumeChange=PrepareLanding(intent.Target,intent.Before[1],intent.Id,confirmed);
+            if (!CheckIntent(intent,confirmed,volumeChange)) return;
             writing = true;
             audio.OutputWritesComplete = () => intent.Timing.WriteMs = RouteTiming.Elapsed(since,Stopwatch.GetTimestamp());
             try {

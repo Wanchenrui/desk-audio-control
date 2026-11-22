@@ -17,7 +17,11 @@ internal sealed partial class AudioPanel
     bool Primary(SmartGroup g) { return Eligible(g, 0) || Eligible(g, 1); }
     string NameFor(string id, int flow)
     {
-        var g = groups.FirstOrDefault(x => ContainsId(flow == 0 ? x.Outputs : x.Inputs, id));
+        return NameFor(groups,id,flow);
+    }
+    static string NameFor(IEnumerable<SmartGroup> snapshot,string id,int flow)
+    {
+        var g = snapshot.FirstOrDefault(x => ContainsId(flow == 0 ? x.Outputs : x.Inputs,id));
         return g == null ? "无" : g.Name;
     }
     void SetStatus(string text, Tone tone)

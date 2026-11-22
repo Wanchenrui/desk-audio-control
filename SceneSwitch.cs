@@ -5,7 +5,7 @@ using System.Linq;
 // Only coarse categories, device observations and counts enter the decision history.
 internal sealed class SceneSignals
 {
-    public string Foreground;
+    public string Foreground,ReadError;
     public bool Capturing, Camera, Communicating, SharedBusy, Away, Unknown, ControlForeground;
     public int Sessions, Hour;
     public readonly HashSet<string> Audible=new HashSet<string>(StringComparer.OrdinalIgnoreCase);

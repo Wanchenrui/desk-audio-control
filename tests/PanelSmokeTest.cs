@@ -18,8 +18,14 @@ internal sealed partial class AudioPanel
         public int LevelAtRoute;
         public float Signal;
         public bool RejectRoute;
+        public Action AfterLevelWrite;
         public override int Level(string id) { return Levels[id]; }
-        public override void SetLevel(string id,int value) { Levels[id]=value; }
+        public override void SetLevel(string id,int value)
+        {
+            Levels[id]=value;
+            var changed=AfterLevelWrite; AfterLevelWrite=null;
+            if (changed!=null) changed();
+        }
         public override GainPoint[] GainPoints(string id) { return new[]{new GainPoint(0,-100),new GainPoint(Level(id),Level(id)-100),new GainPoint(100,0)}; }
         public override bool Muted(string id) { return false; }
         public override float Peak(string id) { return Signal; }
@@ -200,6 +206,13 @@ internal sealed partial class AudioPanel
         var plan=LevelPlanner.Plan(55,88,device.GainPoints("old-music"),device.GainPoints("usb"),
             levels.Samples(source.Key),levels.Samples(dest.Key),true,LevelPlanner.Night(DateTime.Now.Hour),DateTime.UtcNow);
         if (plan.Target!=20) throw new Exception("relative gain transfer between two calibrated devices");
+        device.Roles=new[]{"old-console","old-music","old-call"};
+        device.AfterLevelWrite=delegate { device.Roles[2]="external-call"; };
+        int beforeWrites=device.Writes;
+        insert(2);
+        if (device.Writes!=beforeWrites || device.Roles[2]!="external-call" ||
+            !journal.Records().Any(r=>r.ReasonCode=="route_changed"))
+            throw new Exception("role changed between attenuation and commit");
         Console.WriteLine("P3 pre-route attenuation, manual/automatic fade, peak cut, call/volume interruption, failure rollback, route undo and microphone repair/restore passed.");
     }
 

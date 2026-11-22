@@ -55,58 +55,75 @@ internal static class SceneContext
 
     public static SceneSignals Read(IEnumerable<AudioItem> inputs,IEnumerable<AudioItem> outputs,string[] roles,bool ignoreOwnStreams = false,bool collectPeaks = false)
     {
-        var result = new SceneSignals { Hour = DateTime.Now.Hour };
-        try
-        {
-            uint pid;
-            var window = GetForegroundWindow();
-            GetWindowThreadProcessId(window,out pid);
-            var windowClass = new System.Text.StringBuilder(64);
-            GetClassName(window,windowClass,windowClass.Capacity);
-            result.ControlForeground = pid == GetCurrentProcessId() || windowClass.ToString() == "Shell_TrayWnd" ||
-                windowClass.ToString() == "NotifyIconOverflowWindow";
-            result.Foreground = Category(pid);
-            using (var camera = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam"))
-                result.Camera = CameraInUse(camera);
-            var input = new LastInput { Size = (uint)Marshal.SizeOf(typeof(LastInput)) };
-            result.Away = window == IntPtr.Zero || result.Foreground == "离开" ||
-                (GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount - input.Tick) >= 600000);
-            uint self=GetCurrentProcessId();
-            foreach (var p in inputs)
-            {
-                if (ignoreOwnStreams) AudioCore.ActiveSessions(p.Id,owner=>{ if (owner!=self) result.Capturing=true; });
-                else result.Capturing=AudioCore.InUse(p.Id);
-                if (result.Capturing) break;
+        return ReadWithRetry(()=>ReadOnce(inputs,outputs,roles,ignoreOwnStreams,collectPeaks));
+    }
+
+    internal static SceneSignals ReadWithRetry(Func<SceneSignals> observe)
+    {
+        for (int attempt=0;;attempt++) {
+            try { return observe(); }
+            catch (Exception error) {
+                var com=error as COMException;
+                // RPC_E_CALL_REJECTED and RPC_E_SERVERCALL_RETRYLATER can be transient.
+                if (attempt==0 && com!=null && (com.ErrorCode==unchecked((int)0x80010001) ||
+                    com.ErrorCode==unchecked((int)0x8001010A))) continue;
+                return new SceneSignals { Hour=DateTime.Now.Hour,Unknown=true,
+                    ReadError=error.GetType().Name+" 0x"+error.HResult.ToString("X8") };
             }
-            var categories = new HashSet<string>();
-            bool sawCommunication = false;
-            foreach (var p in outputs)
-            {
-                bool comm = RouteTransaction.Equal(p.Id,roles[2]);
-                sawCommunication |= comm;
-                bool active=false;
-                AudioCore.ActiveSessions(p.Id,sessionPid => {
-                    if (ignoreOwnStreams && sessionPid==self) return;
-                    result.Sessions++;
-                    active=true;
-                    string kind = Category(sessionPid);
-                    categories.Add(kind);
-                    // Unknown shared-role sessions can be browser calls. Dedicated communications
-                    // streams are protected regardless of the foreground application.
-                    if (kind == "会议" || (comm && !RouteTransaction.Equal(roles[1],p.Id))) result.Communicating = true;
-                    if (comm && kind != "音乐" && kind != "影音" && kind != "游戏") result.SharedBusy = true;
-                });
-                if (active && collectPeaks) {
-                    try { if (AudioCore.Peak(p.Id)>.001f) result.Audible.Add(p.Id); }
-                    catch (COMException) { }
-                    catch (InvalidCastException) { }
-                }
-            }
-            result.Unknown = !sawCommunication;
-            if (result.Foreground == null)
-                result.Foreground = new[] { "录制","游戏","影音","音乐" }.FirstOrDefault(categories.Contains);
         }
-        catch (Exception) { result.Unknown = true; }
+    }
+
+    static SceneSignals ReadOnce(IEnumerable<AudioItem> inputs,IEnumerable<AudioItem> outputs,string[] roles,
+        bool ignoreOwnStreams,bool collectPeaks)
+    {
+        var result=new SceneSignals { Hour=DateTime.Now.Hour };
+        uint pid;
+        var window = GetForegroundWindow();
+        GetWindowThreadProcessId(window,out pid);
+        var windowClass = new System.Text.StringBuilder(64);
+        GetClassName(window,windowClass,windowClass.Capacity);
+        result.ControlForeground = pid == GetCurrentProcessId() || windowClass.ToString() == "Shell_TrayWnd" ||
+            windowClass.ToString() == "NotifyIconOverflowWindow";
+        result.Foreground = Category(pid);
+        using (var camera = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam"))
+            result.Camera = CameraInUse(camera);
+        var input = new LastInput { Size = (uint)Marshal.SizeOf(typeof(LastInput)) };
+        result.Away = window == IntPtr.Zero || result.Foreground == "离开" ||
+            (GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount - input.Tick) >= 600000);
+        uint self=GetCurrentProcessId();
+        foreach (var p in inputs)
+        {
+            if (ignoreOwnStreams) AudioCore.ActiveSessions(p.Id,owner=>{ if (owner!=self) result.Capturing=true; });
+            else result.Capturing=AudioCore.InUse(p.Id);
+            if (result.Capturing) break;
+        }
+        var categories = new HashSet<string>();
+        bool sawCommunication = false;
+        foreach (var p in outputs)
+        {
+            bool comm = RouteTransaction.Equal(p.Id,roles[2]);
+            sawCommunication |= comm;
+            bool active=false;
+            AudioCore.ActiveSessions(p.Id,sessionPid => {
+                if (ignoreOwnStreams && sessionPid==self) return;
+                result.Sessions++;
+                active=true;
+                string kind = Category(sessionPid);
+                categories.Add(kind);
+                // Unknown shared-role sessions can be browser calls. Dedicated communications
+                // streams are protected regardless of the foreground application.
+                if (kind == "会议" || (comm && !RouteTransaction.Equal(roles[1],p.Id))) result.Communicating = true;
+                if (comm && kind != "音乐" && kind != "影音" && kind != "游戏") result.SharedBusy = true;
+            });
+            if (active && collectPeaks) {
+                try { if (AudioCore.Peak(p.Id)>.001f) result.Audible.Add(p.Id); }
+                catch (COMException) { }
+                catch (InvalidCastException) { }
+            }
+        }
+        result.Unknown = !sawCommunication;
+        if (result.Foreground == null)
+            result.Foreground = new[] { "录制","游戏","影音","音乐" }.FirstOrDefault(categories.Contains);
         return result;
     }
 }
